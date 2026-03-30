@@ -1,0 +1,517 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<style>
+  .net-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+  .net-url { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .net-pill { border: 1px solid rgba(15,23,42,.12); border-radius: 999px; padding: 2px 10px; font-size: 12px; background: rgba(15,23,42,.03); color: rgba(15,23,42,.70); }
+  .net-box { border: 1px solid rgba(15,23,42,.10); border-radius: 14px; padding: 10px; background: rgba(255,255,255,.96); }
+  .net-pre { max-height: 360px; overflow:auto; background: rgba(15,23,42,.03); border-radius:12px; padding:10px; font-size:12px; white-space: pre-wrap; word-break: break-word; color: rgba(15,23,42,.78); }
+  .net-actions { display:flex; gap:8px; }
+  .ai-pre { background: rgba(15,23,42,.03); border: 1px solid rgba(15,23,42,.10); border-radius: 12px; padding: 10px; font-size: 12px; color: rgba(15,23,42,.78); max-height: 420px; overflow:auto; }
+  .ai-rich { background: rgba(15,23,42,.03); border: 1px solid rgba(15,23,42,.10); border-radius: 12px; padding: 12px; font-size: 13px; line-height: 1.55; color: rgba(15,23,42,.84); }
+  .ai-rich .k-bad { color: #dc2626; font-weight: 600; }
+  .ai-rich .k-warn { color: #d97706; font-weight: 600; }
+  .ai-rich .k-good { color: #16a34a; font-weight: 600; }
+  .ai-rich .k-info { color: #2563eb; font-weight: 600; }
+  .ai-rich .k-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; font-size: 12px; }
+</style>
+
+{% if not is_shared %}
+<div class="mb-3 d-flex align-items-center gap-2 flex-wrap">
+    <a href="{% url 'report_list' %}" class="btn btn-outline-secondary btn-sm">&larr; 返回列表</a>
+    <a href="{% url 'report_export_md' execution.id %}" class="btn btn-outline-primary btn-sm">导出 MD</a>
+    <button class="btn btn-outline-primary btn-sm" type="button" id="js-share-btn" data-share-url="{% url 'report_share_create' execution.id %}">一键分享</button>
+    <span class="text-muted small" id="js-share-tip"></span>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="h5 mb-0 fw-semibold">{{ execution.case.title }} - 执行报告</div>
+    </div>
+    <div class="card-body">
+        <div class="row">
+            <div class="col-md-3"><strong>状态:</strong> {{ execution.get_status_display }}</div>
+            <div class="col-md-3"><strong>执行人:</strong> {{ execution.executor.username }}</div>
+            <div class="col-md-3"><strong>开始时间:</strong> {{ execution.start_time }}</div>
+            <div class="col-md-3"><strong>结束时间:</strong> {{ execution.end_time }}</div>
+        </div>
+        {% if execution.batch_id %}
+        <div class="row mt-2">
+            <div class="col-md-3"><strong>轮次:</strong> 第 {{ execution.run_index }}/{{ execution.run_total }} 轮</div>
+            <div class="col-md-9"><strong>数据集:</strong> {{ execution.dataset_name|default:"-" }}</div>
+        </div>
+        {% endif %}
+        {% if execution.result_summary %}
+        <div class="mt-3">
+            <div class="fw-semibold mb-2">执行结论</div>
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-2">
+                {% with st=execution.result_summary.final_status|default:execution.status %}
+                    {% if st == "completed" %}
+                        <span class="badge bg-success">测试成功</span>
+                    {% elif st == "stopped" %}
+                        <span class="badge bg-secondary">测试已停止</span>
+                    {% else %}
+                        <span class="badge bg-danger">测试失败</span>
+                    {% endif %}
+                {% endwith %}
+                {% if bug %}
+                    <span class="badge bg-danger">发现缺陷</span>
+                    <a class="badge bg-light text-dark border text-decoration-none" href="{% url 'bug_detail' bug.id %}" target="_blank">BUG-{{ bug.id }}</a>
+                {% else %}
+                    <span class="badge bg-success">未发现缺陷</span>
+                {% endif %}
+                {% if execution.result_summary.stop_reason %}
+                    <span class="badge bg-light text-dark border">停止原因：{{ execution.result_summary.stop_reason }}</span>
+                {% endif %}
+                {% if execution.result_summary.failure_reason_code %}
+                    <span class="badge bg-light text-dark border">失败码：{{ execution.result_summary.failure_reason_code }}</span>
+                {% endif %}
+                {% if execution.result_summary.failure_reason_group %}
+                    <span class="badge bg-light text-dark border">分类：{{ execution.result_summary.failure_reason_group }}</span>
+                {% endif %}
+                {% if execution.result_summary.first_failed_step %}
+                    <span class="badge bg-light text-dark border">首失败步骤：{{ execution.result_summary.first_failed_step }}</span>
+                {% endif %}
+            </div>
+            {% if bug %}
+                <div class="net-box mb-2">
+                    <div class="fw-semibold mb-1">缺陷描述</div>
+                    <div class="small">
+                        <div class="mb-1"><span class="text-muted">标题：</span>{{ bug.title }}</div>
+                        {% if bug.description %}
+                            <details>
+                                <summary class="small">查看问题描述</summary>
+                                <pre class="net-pre mt-2 mb-0">{{ bug.description }}</pre>
+                            </details>
+                        {% endif %}
+                        {% if bug.reproduce_steps %}
+                            <details class="mt-2">
+                                <summary class="small">查看复现步骤</summary>
+                                <pre class="net-pre mt-2 mb-0">{{ bug.reproduce_steps }}</pre>
+                            </details>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+            <div class="ai-rich" id="js-ai-detail"></div>
+            <script>
+              (function() {
+                const raw = "{{ execution.result_summary.detail|default_if_none:''|escapejs }}";
+                const target = document.getElementById('js-ai-detail');
+                if (!target) return;
+                const escapeHtml = (s) => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\"/g,'&quot;').replace(/'/g,'&#39;');
+                let html = escapeHtml(raw || '');
+                const apply = (re, cls) => { html = html.replace(re, (m) => `<span class="${cls}">${m}</span>`); };
+                apply(/(失败|错误|阻断|异常|无权限|未通过|超时|终止|未完成)/g, 'k-bad');
+                apply(/(警告|注意|风险|缺失步骤|覆盖不足|未确认|需要遍历|仅作为参考)/g, 'k-warn');
+                apply(/(通过|成功|已完成|完成用例步骤|PASS)/g, 'k-good');
+                apply(/(执行提示|关键证据|停止原因|已登记缺陷|BUG-\\d+|幻灯片遍历|步骤完成)/g, 'k-info');
+                html = html.replace(/(BUG-\\d+)/g, '<span class="k-info k-mono">$1</span>');
+                html = html.replace(/\\n/g, '<br>');
+                if (!html.trim()) {
+                  target.innerHTML = '<span class="text-muted small">暂无结论</span>';
+                } else {
+                  target.innerHTML = html;
+                }
+              })();
+            </script>
+        </div>
+        {% endif %}
+        {% if execution.result_summary.transfer_files %}
+        <div class="mt-3">
+            <div class="fw-semibold mb-2">传输文件</div>
+            <div class="row g-2">
+                {% for k, v in execution.result_summary.transfer_files.items %}
+                <div class="col-12">
+                    <div class="net-box">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="fw-semibold">步骤 {{ k }}</div>
+                            <span class="net-pill">File</span>
+                        </div>
+                        <div class="small">
+                            <div>文件名：{{ v.name|default:"" }}</div>
+                            <div>类型：{{ v.content_type|default:"" }}</div>
+                            <div>大小：{{ v.size|default:0 }} bytes</div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+
+{% if assertions_failed %}
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="d-flex align-items-center justify-content-between">
+            <div class="fw-semibold">关键接口断言（仅展示异常）</div>
+        </div>
+    </div>
+    <div class="card-body">
+        {% for a in assertions_failed %}
+            <details class="mb-2">
+                <summary class="small d-flex align-items-center gap-2">
+                    <span class="badge bg-danger">FAIL</span>
+                    <span class="fw-semibold">{{ a.name }}</span>
+                </summary>
+                <pre class="net-pre mt-2 mb-0">{{ a.detail }}</pre>
+            </details>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<div class="card mb-4">
+    <div class="card-header">
+        <div class="fw-semibold">严重接口统计</div>
+    </div>
+    <div class="card-body">
+        <div class="row g-3">
+            <div class="col-12 col-lg-4">
+                <div class="fw-semibold small mb-2">状态码计数</div>
+                {% if severe_counts %}
+                <div class="d-flex flex-wrap gap-2">
+                    {% for k,v in severe_counts.items %}
+                    <span class="net-pill">{{ k }}: {{ v }}</span>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="text-muted small">暂无 4xx/5xx 严重接口</div>
+                {% endif %}
+            </div>
+            <div class="col-12 col-lg-8">
+                <div class="fw-semibold small mb-2">高频异常接口 Top</div>
+                {% if severe_endpoints_top %}
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>接口</th>
+                                <th style="width:120px;">次数</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u,cnt in severe_endpoints_top %}
+                            <tr>
+                                <td class="net-url" title="{{ u }}">{{ u }}</td>
+                                <td><span class="badge bg-danger">{{ cnt }}</span></td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-muted small">暂无</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="h5 mb-3 fw-semibold">执行步骤详情</div>
+<div class="accordion" id="stepsAccordion">
+    {% for step in execution.step_records.all %}
+    <div class="accordion-item">
+        <h2 class="accordion-header" id="heading{{ step.id }}">
+            <button class="accordion-button {% if not forloop.first %}collapsed{% endif %}" type="button" data-bs-toggle="collapse" data-bs-target="#collapse{{ step.id }}">
+                {% with stop=step.metrics.stopped_reason bugid=step.metrics.bug_id %}
+                <span class="badge {% if step.status == 'failed' or stop == 'assert_failed' or bugid %}bg-danger{% elif step.status == 'success' %}bg-success{% else %}bg-secondary{% endif %} me-2">
+                    {{ step.get_status_display }}
+                </span>
+                {% endwith %}
+                Step {{ step.step_number }}: <span class="js-humanize-action" data-raw="{{ step.description|escape }}">{{ step.description }}</span>
+            </button>
+        </h2>
+        <div id="collapse{{ step.id }}" class="accordion-collapse collapse {% if forloop.first %}show{% endif %}" data-bs-parent="#stepsAccordion">
+            <div class="accordion-body">
+                <div class="row">
+                    <div class="col-md-6">
+                        <h5>执行截图</h5>
+                        {% if step.screenshot_after %}
+                        <img src="{{ step.screenshot_after.url }}" class="img-fluid border rounded" alt="Screenshot">
+                        {% else %}
+                        <p class="text-muted">无截图</p>
+                        {% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        <h5>AI 执行详情</h5>
+                        <p><strong>AI 思考:</strong></p>
+                        <pre class="ai-pre mb-2">{{ step.ai_thought }}</pre>
+                        
+                        {% if step.error_message %}
+                        <div class="alert alert-danger">
+                            <strong>错误信息:</strong> {{ step.error_message }}
+                        </div>
+                        {% elif step.metrics.stopped_reason == "assert_failed" or step.metrics.bug_id %}
+                        <div class="alert alert-danger">
+                            <strong>发现缺陷</strong>
+                            {% if step.metrics.bug_id %}：BUG-{{ step.metrics.bug_id }}{% endif %}
+                            {% if step.metrics.assert_summary %}
+                            <div class="mt-2 small" style="white-space:pre-wrap;">{{ step.metrics.assert_summary }}</div>
+                            {% endif %}
+                        </div>
+                        {% endif %}
+
+                        {% if step.metrics.stopped_reason or step.metrics.stop_toasts or step.metrics.stop_network or step.metrics.stop_evidence %}
+                        <div class="net-box mb-2">
+                            <div class="fw-semibold mb-1">停止决策</div>
+                            <div class="small">
+                                {% if step.metrics.stopped_reason %}
+                                <div class="mb-1"><span class="text-muted">停止原因：</span>{{ step.metrics.stopped_reason }}</div>
+                                {% endif %}
+                                {% if step.metrics.blocking %}
+                                <div class="mb-1"><span class="badge bg-danger">阻塞性</span></div>
+                                {% endif %}
+                                {% if step.metrics.blocking_reason %}
+                                <div class="mb-1"><span class="text-muted">判定理由：</span>{{ step.metrics.blocking_reason }}</div>
+                                {% endif %}
+                                {% if step.metrics.stop_toasts %}
+                                <div class="mb-1"><span class="text-muted">近期提示：</span>{{ step.metrics.stop_toasts|join:"；" }}</div>
+                                {% endif %}
+                                {% if step.metrics.stop_network %}
+                                <div class="mb-1"><span class="text-muted">近期接口：</span>{{ step.metrics.stop_network|join:"；" }}</div>
+                                {% endif %}
+                                {% if step.metrics.stop_evidence %}
+                                <details class="mt-2">
+                                    <summary class="small">查看证据明细</summary>
+                                    <div class="mt-2" style="max-height: 220px; overflow:auto;">
+                                        {% for e in step.metrics.stop_evidence|slice:"-12:" %}
+                                        <div class="d-flex align-items-start gap-2 mb-1 small">
+                                            <span class="net-pill">{{ e.kind|default:"-" }}</span>
+                                            <div style="min-width:0; white-space:pre-wrap;">{{ e.text|default:"" }}</div>
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                </details>
+                                {% endif %}
+                            </div>
+                        </div>
+                        {% endif %}
+                        
+                        <div class="d-flex align-items-center justify-content-between">
+                            <h5 class="mb-0">网络请求</h5>
+                            <span class="text-muted small">默认优先展示：POST + 关键 GET（login/auth/token/user/session/graphql）</span>
+                        </div>
+
+                        <ul class="nav nav-tabs mt-2" id="netTabs{{ step.id }}" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active" id="net-important-tab-{{ step.id }}" data-bs-toggle="tab" data-bs-target="#net-important-{{ step.id }}" type="button" role="tab">
+                                    重要接口
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link" id="net-all-tab-{{ step.id }}" data-bs-toggle="tab" data-bs-target="#net-all-{{ step.id }}" type="button" role="tab">
+                                    全部接口 ({{ step.network_entries.count }})
+                                </button>
+                            </li>
+                        </ul>
+
+                        <div class="tab-content border border-top-0 rounded-bottom p-2" style="max-height: 420px; overflow:auto;">
+                            <div class="tab-pane fade show active" id="net-important-{{ step.id }}" role="tabpanel">
+                                {% with keyword_list="login auth token user current session oauth refresh graphql" %}
+                                {% for net in step.network_entries.all %}
+                                    {% with u=net.url|lower m=net.method|upper %}
+                                    {% if m == "POST" or m == "PUT" or m == "PATCH" or m == "DELETE" or "login" in u or "auth" in u or "token" in u or "user" in u or "current" in u or "session" in u or "oauth" in u or "refresh" in u or "graphql" in u %}
+                                    <div class="net-box mb-2">
+                                        <div class="net-row">
+                                            <div class="d-flex align-items-center gap-2" style="min-width:0;">
+                                                <span class="badge bg-dark">{{ net.method }}</span>
+                                                <span class="badge {% if net.status_code >= 200 and net.status_code < 300 %}bg-success{% else %}bg-danger{% endif %}">{{ net.status_code }}</span>
+                                                <div class="net-url" title="{{ net.url }}">{{ net.url }}</div>
+                                            </div>
+                                            <div class="net-actions">
+                                                <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#netDetail{{ net.id }}">详情</button>
+                                            </div>
+                                        </div>
+                                        <div class="collapse mt-2" id="netDetail{{ net.id }}">
+                                            <div class="row g-2">
+                                                <div class="col-12 col-lg-6">
+                                                    <div class="fw-semibold small mb-1">请求参数</div>
+                                                    <pre class="net-pre mb-0 js-json" data-json="{{ net.request_data|escape }}"></pre>
+                                                </div>
+                                                <div class="col-12 col-lg-6">
+                                                    <div class="fw-semibold small mb-1">响应内容</div>
+                                                    <pre class="net-pre mb-0 js-json" data-json="{{ net.response_data|escape }}"></pre>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    {% endif %}
+                                    {% endwith %}
+                                {% empty %}
+                                    <div class="text-muted small">无网络请求记录</div>
+                                {% endfor %}
+                                {% endwith %}
+                            </div>
+
+                            <div class="tab-pane fade" id="net-all-{{ step.id }}" role="tabpanel">
+                                {% for net in step.network_entries.all %}
+                                <div class="net-box mb-2">
+                                    <div class="net-row">
+                                        <div class="d-flex align-items-center gap-2" style="min-width:0;">
+                                            <span class="badge bg-secondary">{{ net.method }}</span>
+                                            <span class="badge bg-light text-dark">{{ net.status_code }}</span>
+                                            <div class="net-url" title="{{ net.url }}">{{ net.url }}</div>
+                                        </div>
+                                        <div class="net-actions">
+                                            <button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#netDetail{{ net.id }}">详情</button>
+                                        </div>
+                                    </div>
+                                    <div class="collapse mt-2" id="netDetail{{ net.id }}">
+                                        <div class="row g-2">
+                                            <div class="col-12 col-lg-6">
+                                                <div class="fw-semibold small mb-1">请求参数</div>
+                                                <pre class="net-pre mb-0 js-json" data-json="{{ net.request_data|escape }}"></pre>
+                                            </div>
+                                            <div class="col-12 col-lg-6">
+                                                <div class="fw-semibold small mb-1">响应内容</div>
+                                                <pre class="net-pre mb-0 js-json" data-json="{{ net.response_data|escape }}"></pre>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                                {% empty %}
+                                <div class="text-muted small">无网络请求记录</div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+
+<script>
+  (function () {
+    const nodes = document.querySelectorAll('.js-json[data-json]');
+    nodes.forEach((el) => {
+      const raw = el.getAttribute('data-json') || '';
+      if (!raw) {
+        el.textContent = '';
+        return;
+      }
+      try {
+        const obj = JSON.parse(raw);
+        el.textContent = JSON.stringify(obj, null, 2);
+      } catch (e) {
+        el.textContent = raw;
+      }
+    });
+  })();
+
+  (function () {
+    const btn = document.getElementById('js-share-btn');
+    const tip = document.getElementById('js-share-tip');
+    if (!btn) return;
+
+    const getCookie = (name) => {
+      const value = `; ${document.cookie}`;
+      const parts = value.split(`; ${name}=`);
+      if (parts.length === 2) return parts.pop().split(';').shift();
+      return '';
+    };
+
+    const copyText = async (text) => {
+      if (navigator.clipboard && window.isSecureContext) {
+        await navigator.clipboard.writeText(text);
+        return;
+      }
+      const input = document.createElement('input');
+      input.value = text;
+      document.body.appendChild(input);
+      input.select();
+      document.execCommand('copy');
+      document.body.removeChild(input);
+    };
+
+    btn.addEventListener('click', async () => {
+      btn.disabled = true;
+      if (tip) tip.textContent = '生成中...';
+      try {
+        const resp = await fetch(btn.getAttribute('data-share-url'), {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: {
+            'X-CSRFToken': getCookie('csrftoken'),
+          },
+        });
+        const ct = (resp.headers.get('content-type') || '').toLowerCase();
+        if (!ct.includes('application/json')) {
+          const text = await resp.text();
+          throw new Error(`接口返回非JSON（HTTP ${resp.status}）`);
+        }
+        const data = await resp.json();
+        if (!data || !data.success || !data.url) {
+          throw new Error((data && data.error) || '生成失败');
+        }
+        await copyText(data.url);
+        if (tip) tip.textContent = `已复制：${data.url}`;
+      } catch (e) {
+        if (tip) tip.textContent = `分享失败：${e && e.message ? e.message : e}`;
+      } finally {
+        btn.disabled = false;
+      }
+    });
+  })();
+
+  (function () {
+    const nodes = document.querySelectorAll('.js-humanize-action[data-raw]');
+    const decode = (s) => {
+      const t = document.createElement('textarea');
+      t.innerHTML = String(s || '');
+      return t.value;
+    };
+    const humanize = (raw) => {
+      const t = String(raw || '').trim();
+      if (!t) return '';
+      const lower = t.toLowerCase();
+      const mIdx = () => {
+        const m = t.match(/index\s*=\s*(\d+)/i);
+        return m ? m[1] : '';
+      };
+      if (lower === 'timeout') return '执行超时';
+      if (lower.includes('go_to_url') || lower.startsWith('goto') || lower.includes('goto(')) {
+        const m = t.match(/(?:url\s*=\s*|goto\()\s*['"]([^'"]+)['"]/i);
+        const u = m ? m[1] : '';
+        return u ? `打开链接：${u.slice(0,160)}` : '打开链接';
+      }
+      if (lower.includes('open_tab')) return '打开新标签页';
+      if (lower.includes('switch_tab')) {
+        const m = t.match(/(?:tab|index)\s*=\s*(\d+)/i);
+        return m ? `切换标签页：${m[1]}` : '切换标签页';
+      }
+      if (lower.includes('click_element') || lower.startsWith('click')) {
+        const idx = mIdx();
+        return idx ? `点击页面元素（#${idx}）` : '点击页面元素';
+      }
+      if (lower.includes('input_text')) {
+        const idx = mIdx();
+        let v = '';
+        const m = t.match(/(?:text|value)\s*=\s*['"]([^'"]*)['"]/i);
+        v = m ? m[1] : '';
+        if (v && v.length > 30) v = v.slice(0,30) + '…';
+        if (v && (lower.includes('password') || lower.includes('passwd'))) v = '[已输入]';
+        if (idx && v) return `输入文本到元素（#${idx}）：${v}`;
+        if (idx) return `输入文本到元素（#${idx}）`;
+        return '输入文本';
+      }
+      if (lower.includes('send_keys')) return '键盘输入/快捷键';
+      if (lower.includes('scroll')) return '滚动页面';
+      if (lower.includes('extract')) return '提取页面内容';
+      if (lower.includes('done')) return '结束执行';
+      return t;
+    };
+    nodes.forEach((el) => {
+      const raw = decode(el.getAttribute('data-raw') || '');
+      const out = humanize(raw);
+      if (out && out !== raw) el.textContent = out;
+    });
+  })();
+</script>
+{% endblock %}

@@ -1,0 +1,618 @@
+{% extends 'base.html' %}
+
+{% block container_class %}container-fluid mt-3 px-3{% endblock %}
+
+{% block content %}
+<style>
+  .app-body { overflow: hidden; }
+  .autotest-shell { display: grid; grid-template-columns: minmax(420px, 560px) 1fr; gap: 16px; align-items: stretch; }
+  @media (max-width: 992px) { .autotest-shell { grid-template-columns: 1fr; } }
+  .autotest-vh { min-height: 620px; height: 620px; }
+  .step-list { height: 100%; overflow: auto; }
+  .step-item { border: 1px solid rgba(15,23,42,.12); border-radius: 14px; padding: 10px 12px; background: rgba(255,255,255,.96); }
+  .step-item + .step-item { margin-top: 10px; }
+  .step-item.is-active { border-color: rgba(47,128,255,.35); box-shadow: 0 10px 24px rgba(47, 128, 255, 0.10); }
+  .step-title { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .step-title-left { display: flex; align-items: center; gap: 10px; min-width: 0; }
+  .step-title-text { font-weight: 800; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .step-meta { font-size: 12px; color: rgba(15,23,42,.56); }
+  .step-detail { margin-top: 8px; }
+  .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+  .preview-wrap { position: relative; height: 100%; border-radius: 14px; overflow: hidden; background: rgba(255,255,255,.96); border: 1px solid rgba(15,23,42,.10); }
+  .preview-stage { width: 100%; height: 100%; overflow: auto; background: rgba(15,23,42,.03); display: flex; align-items: flex-start; justify-content: center; }
+  .preview-img { background: rgba(15,23,42,.02); display: none; max-width: none; max-height: none; }
+  .preview-placeholder { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; color: rgba(15,23,42,.56); background: rgba(255,255,255,.72); }
+  .thought-card { border-radius: 14px; background: rgba(255,255,255,.96); border: 1px solid rgba(15,23,42,.10); max-height: 180px; display: flex; flex-direction: column; min-height: 0; }
+  .thought-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .thought-body { min-height: 0; overflow: auto; }
+  .thought-card pre { margin: 0; font-size: 12px; white-space: pre-wrap; word-break: break-word; color: rgba(15,23,42,.78); }
+  .autotest-shell > * { min-height: 0; }
+  .autotest-shell .card.h-100 { display: flex; flex-direction: column; min-height: 0; }
+  .autotest-shell .card.h-100 .card-body.step-list { min-height: 0; }
+</style>
+
+<div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+  <div class="d-flex align-items-center gap-2">
+    <span class="badge bg-primary">AI 自动化执行</span>
+    <div class="h4 mb-0">{{ execution.case.title }}</div>
+    {% if execution.batch_id %}
+      <span class="badge bg-info">第 {{ execution.run_index }}/{{ execution.run_total }} 轮{% if execution.dataset_name %} · {{ execution.dataset_name }}{% endif %}</span>
+    {% endif %}
+    <span id="current-status" class="badge bg-secondary ms-2">PENDING</span>
+  </div>
+  <div id="controls" class="d-flex gap-2">
+    <button id="btn-guide" class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#guideModal" style="display:none;">参考图提示</button>
+    <button id="btn-pause" class="btn btn-outline-warning" onclick="pauseTest()">暂停</button>
+    <button id="btn-resume" class="btn btn-outline-success" onclick="resumeTest()" style="display:none;">继续</button>
+    <button id="btn-stop" class="btn btn-outline-danger" onclick="stopTest()">停止</button>
+    <a id="btn-report" href="{% url 'report_detail' execution.id %}" class="btn btn-primary" style="display:none;">查看报告</a>
+  </div>
+</div>
+
+<div class="autotest-shell autotest-vh">
+  <div class="card h-100">
+    <div class="card-header d-flex justify-content-between align-items-center">
+      <div class="fw-semibold">执行步骤</div>
+      <div class="small text-muted" id="step-count">0 steps</div>
+    </div>
+    <div class="card-body step-list" id="step-list">
+      <div class="text-center py-5 text-muted" id="step-loading">
+        <div class="spinner-border" role="status"></div>
+        <div class="mt-2">正在初始化 AI Agent...</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="d-flex flex-column gap-2 h-100">
+    <div class="preview-wrap shadow-sm flex-grow-1">
+      <div class="preview-stage" id="preview-stage">
+        <img id="live-screenshot" class="preview-img" src="" alt="screenshot">
+      </div>
+      <div id="live-placeholder" class="preview-placeholder">
+        <div class="text-center">
+          <div class="spinner-border" role="status"></div>
+          <div class="mt-2" id="live-placeholder-text">等待画面传输...</div>
+        </div>
+      </div>
+      <div class="position-absolute bottom-0 end-0 p-2 d-flex gap-2">
+        <div class="btn-group btn-group-sm" role="group" aria-label="zoom">
+          <button class="btn btn-outline-secondary" onclick="zoomOut()">-</button>
+          <button class="btn btn-outline-secondary" onclick="zoomFit()">适应</button>
+          <button class="btn btn-outline-secondary" onclick="zoomReset()">1:1</button>
+          <button class="btn btn-outline-secondary" onclick="zoomIn()">+</button>
+        </div>
+        <div class="btn-group btn-group-sm" role="group" aria-label="fit-mode">
+          <button class="btn btn-outline-secondary" onclick="zoomFitWidth()">适应宽</button>
+          <button class="btn btn-outline-secondary" onclick="zoomFitHeight()">适应高</button>
+        </div>
+        <div class="form-check form-check-inline rounded px-2 py-1 mb-0" style="background: rgba(15,23,42,.03); border: 1px solid rgba(15,23,42,.10);">
+          <input class="form-check-input" type="checkbox" id="autoFit" checked>
+          <label class="form-check-label small" for="autoFit">自动适应</label>
+        </div>
+        <button class="btn btn-sm btn-outline-secondary" onclick="openPreview()">放大</button>
+        <button class="btn btn-sm btn-outline-secondary" onclick="openInNewTab()">新窗口</button>
+      </div>
+    </div>
+    <div class="thought-card p-2" id="ai-thought-log">
+      <div class="thought-head">
+        <div class="fw-semibold small">返回结果</div>
+        <button id="thought-toggle" class="btn btn-sm btn-outline-secondary" type="button" style="display:none;">展开</button>
+      </div>
+      <div class="thought-body mt-1">
+        <pre class="mono" id="thought-text">AI 思考中...</pre>
+      </div>
+    </div>
+    <div class="small text-muted mono" id="cdp-hint"></div>
+  </div>
+</div>
+
+<div class="modal fade" id="previewModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-xl modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title fw-semibold">截图预览</div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body p-0" style="background: rgba(15,23,42,.92);">
+        <img id="modalImage" src="" alt="preview" style="width:100%; height:70vh; object-fit:contain;">
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal fade" id="guideModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+    <div class="modal-content">
+      <div class="modal-header">
+        <div class="modal-title fw-semibold">参考截图提示</div>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body" id="guide-body">
+        <div class="text-muted">暂无参考截图提示</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+    const executionId = {{ execution.id }};
+    let pollingInterval = null;
+    let latestScreenshotUrl = null;
+    let zoomScale = 1.0;
+    let naturalW = null;
+    let naturalH = null;
+    const expandedSteps = new Set();
+    let followLatest = true;
+    let lastActiveStep = null;
+    let guideHints = null;
+    let thoughtExpanded = false;
+
+    function setShellHeight() {
+        const shell = document.querySelector('.autotest-shell');
+        if (!shell) return;
+        const top = Math.max(0, Math.floor(shell.getBoundingClientRect().top));
+        const h = Math.max(540, Math.floor(window.innerHeight - top - 16));
+        shell.style.height = h + 'px';
+    }
+
+    function isNearBottom(el, thresholdPx = 120) {
+        try {
+            return (el.scrollTop + el.clientHeight) >= (el.scrollHeight - thresholdPx);
+        } catch (e) {
+            return true;
+        }
+    }
+
+    window.addEventListener('resize', setShellHeight);
+    window.addEventListener('load', setShellHeight);
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    function startPolling() {
+        pollingInterval = setInterval(fetchStatus, {{ poll_ms|default:1000 }});
+    }
+
+    async function fetchStatus() {
+        try {
+            const response = await fetch(`/autotest/status/${executionId}/`);
+            const data = await response.json();
+            
+            updateUI(data);
+            
+            if (['completed', 'failed', 'stopped'].includes(data.status)) {
+                clearInterval(pollingInterval);
+                document.getElementById('btn-pause').style.display = 'none';
+                document.getElementById('btn-resume').style.display = 'none';
+                document.getElementById('btn-stop').style.display = 'none';
+                document.getElementById('btn-report').style.display = 'inline-block';
+            }
+        } catch (error) {
+            console.error('Error fetching status:', error);
+        }
+    }
+
+    function normalizeUrl(url) {
+        if (!url) return null;
+        if (url.startsWith('http://') || url.startsWith('https://')) return url;
+        if (url.startsWith('/')) return url;
+        return '/' + url;
+    }
+
+    function formatActionText(description) {
+        if (!description) return 'AI 动作';
+        const s = String(description);
+        if (s.includes('navigate')) return '导航';
+        if (s.includes('input')) return '输入';
+        if (s.includes('click')) return '点击';
+        if (s.includes('scroll')) return '滚动';
+        if (s.includes('wait')) return '等待';
+        if (s.includes('extract')) return '提取';
+        return 'AI 动作';
+    }
+
+    function setThoughtText(fullText) {
+        const log = document.getElementById('ai-thought-log');
+        const pre = document.getElementById('thought-text');
+        const toggle = document.getElementById('thought-toggle');
+        if (!log || !pre || !toggle) return;
+        const next = String(fullText || '');
+        const prev = log.dataset.fullThought || '';
+        if (next !== prev) {
+            thoughtExpanded = false;
+            log.dataset.fullThought = next;
+        }
+        const lines = next.split(/\r?\n/);
+        const needTruncate = lines.length > 3;
+        toggle.style.display = needTruncate ? 'inline-block' : 'none';
+        toggle.textContent = thoughtExpanded ? '收起' : '展开';
+        if (!next) {
+            pre.textContent = 'AI 思考中...';
+            return;
+        }
+        if (!needTruncate || thoughtExpanded) {
+            pre.textContent = next;
+            return;
+        }
+        const head = lines.slice(0, 3).join('\n');
+        pre.textContent = head + `\n...（共${lines.length}行）`;
+    }
+
+    function updateUI(data) {
+        const statusBadge = document.getElementById('current-status');
+        statusBadge.textContent = data.status.toUpperCase();
+        statusBadge.className = `badge bg-${getStatusColor(data.status)}`;
+
+        if (data.status === 'paused') {
+            document.getElementById('btn-pause').style.display = 'none';
+            document.getElementById('btn-resume').style.display = 'inline-block';
+        } else if (data.status === 'running') {
+            document.getElementById('btn-pause').style.display = 'inline-block';
+            document.getElementById('btn-resume').style.display = 'none';
+        }
+
+        const list = document.getElementById('step-list');
+        const loading = document.getElementById('step-loading');
+        const stepCount = document.getElementById('step-count');
+        const shouldFollow = followLatest && isNearBottom(list, 140);
+        let latestScreenshot = null;
+        let latestThought = '';
+        let cdpHint = '';
+        let activeStep = null;
+        try {
+            guideHints = (data && data.summary && data.summary.guide_hints) ? data.summary.guide_hints : null;
+        } catch (e) {
+            guideHints = null;
+        }
+        try {
+            const btnGuide = document.getElementById('btn-guide');
+            if (btnGuide) {
+                const hasGuide = guideHints && Object.keys(guideHints).length > 0;
+                btnGuide.style.display = hasGuide ? 'inline-block' : 'none';
+                if (hasGuide) {
+                    const box = document.getElementById('guide-body');
+                    if (box) {
+                        const keys = Object.keys(guideHints).sort((a, b) => Number(a) - Number(b));
+                        box.innerHTML = keys.map((k) => {
+                            const item = guideHints[k] || {};
+                            const hint = item.hint ? String(item.hint) : '';
+                            const img = item.image ? normalizeUrl(String(item.image)) : '';
+                            const imgHtml = img ? `<img src="${img}" alt="guide" style="width:100%; max-height:220px; object-fit:contain; border-radius:12px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">` : '';
+                            const hintHtml = hint ? `<div class="mt-2">${hint}</div>` : `<div class="text-muted">无提示</div>`;
+                            return `
+                              <div class="card mb-2">
+                                <div class="card-header d-flex justify-content-between align-items-center">
+                                  <div class="fw-semibold">步骤 ${k}</div>
+                                  <span class="badge bg-primary">Guide</span>
+                                </div>
+                                <div class="card-body">
+                                  ${imgHtml}
+                                  ${hintHtml}
+                                </div>
+                              </div>
+                            `;
+                        }).join('');
+                    }
+                }
+            }
+        } catch (e) {}
+
+        if (data.steps && data.steps.length > 0) {
+            list.innerHTML = '';
+            if (loading) loading.style.display = 'none';
+            stepCount.textContent = `${data.steps.length} steps`;
+
+            data.steps.forEach(step => {
+                const wrap = document.createElement('div');
+                wrap.className = 'step-item';
+                wrap.dataset.stepItem = String(step.step_number);
+
+                const status = step.status || 'pending';
+                const actionType = formatActionText(step.description);
+                const title = step.step_number === 0 ? `Step 0 · 启动浏览器` : `Step ${step.step_number} · ${actionType}`;
+                const isExpanded = expandedSteps.has(String(step.step_number));
+                const detailClass = isExpanded ? '' : 'd-none';
+
+                const badge = status === 'success'
+                    ? `<span class="badge bg-success">SUCCESS</span>`
+                    : status === 'failed'
+                        ? `<span class="badge bg-danger">FAILED</span>`
+                        : `<span class="badge bg-warning text-dark">RUNNING</span>`;
+
+                const errorHtml = step.error_message ? `<div class="text-danger small mt-1">${step.error_message}</div>` : '';
+                const thoughtHtml = step.ai_thought ? `<pre class="mono mb-0">${step.ai_thought}</pre>` : `<div class="text-muted small">无 AI 思考输出</div>`;
+                const descHtml = step.description ? `<pre class="mono mb-0">${step.description}</pre>` : '';
+                const ocrResult = step.metrics && step.metrics.ocr_result ? String(step.metrics.ocr_result) : '';
+                const ocrSkip = step.metrics && step.metrics.ocr_skip_reason ? String(step.metrics.ocr_skip_reason) : '';
+                const ocrText = step.metrics && step.metrics.ocr_text ? String(step.metrics.ocr_text) : '';
+                const ocrImageUrl = step.ocr_screenshot ? normalizeUrl(step.ocr_screenshot) : '';
+                const ocrImage = ocrImageUrl || (step.metrics && step.metrics.ocr_image ? String(step.metrics.ocr_image) : '');
+                const ocrLabel = ocrResult === 'found' ? '识别到' : ocrResult === 'empty' ? '未识别到' : ocrResult === 'skipped' ? '跳过' : ocrResult === 'error' ? '异常' : '';
+                const ocrLine = ocrLabel ? `OCR：${ocrLabel}${ocrSkip ? `（${ocrSkip}）` : ''}${ocrText ? ` · ${ocrText}` : ''}` : '';
+                const ocrHtml = ocrLine ? `
+                  <div class="mt-2">
+                    <div class="fw-semibold small mb-1">OCR</div>
+                    <div class="small text-muted">${ocrLine}</div>
+                    ${ocrImage ? `<img src="${ocrImage}" alt="ocr" style="width:100%; max-height:120px; object-fit:contain; border-radius:12px; margin-top:8px; border:1px solid rgba(255,255,255,.10); background: rgba(0,0,0,.18);">` : ''}
+                  </div>` : '';
+                const scrollTarget = step.metrics && step.metrics.scroll_target ? String(step.metrics.scroll_target) : '';
+                const scrollRounds = step.metrics && step.metrics.scroll_rounds !== undefined ? String(step.metrics.scroll_rounds) : '';
+                const scrollAfter = step.metrics && step.metrics.scroll_after ? step.metrics.scroll_after : null;
+                const scrollDoc = scrollAfter && scrollAfter.doc ? scrollAfter.doc : null;
+                const scrollCont = scrollAfter && scrollAfter.container ? scrollAfter.container : null;
+                const scrollLine = scrollTarget ? `滚动：target=${scrollTarget}${scrollRounds ? ` · rounds=${scrollRounds}` : ''}` : '';
+                const scrollPos = scrollDoc ? `doc=${Math.floor(scrollDoc.top||0)}/${Math.floor((scrollDoc.height||0)-(scrollDoc.client||0))}` : (scrollCont ? `container=${Math.floor(scrollCont.top||0)}/${Math.floor((scrollCont.height||0)-(scrollCont.client||0))}` : '');
+                const scrollHtml = (scrollLine || scrollPos) ? `
+                  <div class="mt-2">
+                    <div class="fw-semibold small mb-1">滚动</div>
+                    <div class="small text-muted">${[scrollLine, scrollPos].filter(Boolean).join(' · ')}</div>
+                  </div>` : '';
+                const stoppedReason = step.metrics && step.metrics.stopped_reason ? String(step.metrics.stopped_reason) : '';
+                const stoppedHint = stoppedReason === 'max_steps' ? `停止原因：达到最大步数限制（max_steps=${step.metrics && step.metrics.max_steps ? step.metrics.max_steps : ''}）` : (stoppedReason ? `停止原因：${stoppedReason}` : '');
+                const stopHtml = stoppedHint ? `
+                  <div class="mt-2">
+                    <div class="fw-semibold small mb-1">停止</div>
+                    <div class="small text-muted">${stoppedHint}</div>
+                  </div>` : '';
+                const pageState = step.metrics && step.metrics.page_state ? step.metrics.page_state : null;
+                const pageCur = pageState && pageState.current !== undefined && pageState.current !== null ? String(pageState.current) : '';
+                const pageTotal = pageState && pageState.total !== undefined && pageState.total !== null ? String(pageState.total) : '';
+                const pageNextDisabled = pageState && pageState.nextDisabled !== undefined ? pageState.nextDisabled : null;
+                const pageLine = pageCur ? `当前页：${pageCur}${pageTotal ? `/${pageTotal}` : ''}${pageNextDisabled === null ? '' : ` · 下一页${pageNextDisabled ? '不可用' : '可用'}`}` : '';
+                const pagAttempts = step.metrics && step.metrics.pagination_attempts !== undefined ? String(step.metrics.pagination_attempts) : '';
+                const pagNext = step.metrics && step.metrics.pagination_next ? step.metrics.pagination_next : null;
+                const pagGoto = step.metrics && step.metrics.pagination_goto ? step.metrics.pagination_goto : null;
+                const pagNextLine = pagNext ? `兜底下一页：${pagNext.ok ? '成功' : '失败'}${pagNext.attempt ? ` · 尝试=${pagNext.attempt}` : ''}` : '';
+                const pagGotoLine = pagGoto ? `兜底跳页：${pagGoto.ok ? '成功' : '失败'}${pagGoto.attempt ? ` · 尝试=${pagGoto.attempt}` : ''}` : '';
+                const pagMeta = [pagAttempts ? `累计兜底=${pagAttempts}` : '', pagGotoLine, pagNextLine].filter(Boolean).join(' · ');
+                const pagHtml = (pageLine || pagMeta) ? `
+                  <div class="mt-2">
+                    <div class="fw-semibold small mb-1">分页</div>
+                    <div class="small text-muted">${[pageLine, pagMeta].filter(Boolean).join(' · ')}</div>
+                  </div>` : '';
+                const durRaw = (step.duration_ms !== undefined && step.duration_ms !== null)
+                  ? step.duration_ms
+                  : (step.metrics && step.metrics.duration_ms !== undefined ? step.metrics.duration_ms : null);
+                const dur = (durRaw !== null && durRaw !== undefined) ? Number(durRaw) : null;
+                const durHtml = (dur !== null && !Number.isNaN(dur)) ? ` · 耗时：${dur}ms` : '';
+
+                wrap.innerHTML = `
+                  <div class="step-title">
+                    <div class="step-title-left">
+                      ${badge}
+                      <div class="step-title-text">${title}</div>
+                    </div>
+                    <button class="btn btn-sm btn-outline-secondary" type="button" data-step-toggle="${step.step_number}">详情</button>
+                  </div>
+                  <div class="step-meta mt-1">状态：${status.toUpperCase()}${durHtml}</div>
+                  ${errorHtml}
+                  <div class="step-detail ${detailClass}" data-step-detail="${step.step_number}">
+                    <div class="mt-2">
+                      <div class="fw-semibold small mb-1">动作</div>
+                      ${descHtml}
+                    </div>
+                    <div class="mt-2">
+                      <div class="fw-semibold small mb-1">AI 思考</div>
+                      ${thoughtHtml}
+                    </div>
+                    ${stopHtml}
+                    ${pagHtml}
+                    ${scrollHtml}
+                    ${ocrHtml}
+                  </div>
+                `;
+                list.appendChild(wrap);
+
+                if (step.screenshot_after) {
+                    latestScreenshot = normalizeUrl(step.screenshot_after);
+                    activeStep = step.step_number;
+                }
+                if (step.ai_thought) {
+                    latestThought = step.ai_thought;
+                }
+                if (step.step_number === 0 && step.ai_thought && step.ai_thought.includes('cdp_url=')) {
+                    cdpHint = step.ai_thought.trim();
+                }
+            });
+        } else {
+            list.innerHTML = '';
+            if (loading) loading.style.display = 'block';
+            stepCount.textContent = '0 steps';
+        }
+
+        if (activeStep === null && data.steps && data.steps.length) {
+            activeStep = data.steps[data.steps.length - 1].step_number;
+        }
+        if (activeStep !== null) {
+            const activeEl = list.querySelector(`[data-step-item="${String(activeStep)}"]`);
+            if (activeEl) activeEl.classList.add('is-active');
+            lastActiveStep = activeStep;
+            if (shouldFollow && activeEl) {
+                try { activeEl.scrollIntoView({ block: 'end', inline: 'nearest' }); } catch (e) {}
+            }
+        }
+
+        const img = document.getElementById('live-screenshot');
+        const placeholder = document.getElementById('live-placeholder');
+        const placeholderText = document.getElementById('live-placeholder-text');
+        if (latestScreenshot) {
+            latestScreenshotUrl = latestScreenshot;
+            img.src = latestScreenshotUrl;
+            img.style.display = 'block';
+            placeholder.style.display = 'none';
+            img.onload = () => {
+              naturalW = img.naturalWidth || null;
+              naturalH = img.naturalHeight || null;
+              if (document.getElementById('autoFit')?.checked) {
+                zoomFit();
+              } else {
+                applyZoom();
+              }
+            };
+        } else {
+            img.style.display = 'none';
+            placeholder.style.display = 'flex';
+            const mode = String((data && data.screenshot_mode) || 'all').toLowerCase();
+            const hasSteps = !!(data && data.steps && data.steps.length);
+            const hasFailed = !!(data && data.steps && data.steps.some(s => String(s.status || '').toLowerCase() === 'failed'));
+            if (placeholderText) {
+                if (mode === 'failed' && hasSteps && !hasFailed) {
+                    placeholderText.textContent = '当前仅失败步骤保存画面，执行中可能暂无截图';
+                } else {
+                    placeholderText.textContent = '等待画面传输...';
+                }
+            }
+        }
+
+        const log = document.getElementById('ai-thought-log');
+        if (latestThought) setThoughtText(latestThought);
+
+        document.getElementById('cdp-hint').textContent = cdpHint;
+
+    }
+
+    document.getElementById('step-list').addEventListener('scroll', () => {
+        const el = document.getElementById('step-list');
+        followLatest = isNearBottom(el, 160);
+    });
+
+    document.getElementById('step-list').addEventListener('click', (e) => {
+        const btn = e.target.closest('[data-step-toggle]');
+        if (!btn) return;
+        const key = btn.getAttribute('data-step-toggle');
+        if (!key) return;
+        const panel = document.getElementById('step-list').querySelector(`[data-step-detail="${key}"]`);
+        if (!panel) return;
+        if (expandedSteps.has(String(key))) {
+            expandedSteps.delete(String(key));
+            panel.classList.add('d-none');
+        } else {
+            expandedSteps.add(String(key));
+            panel.classList.remove('d-none');
+        }
+    });
+
+    document.getElementById('ai-thought-log').addEventListener('click', (e) => {
+        const btn = e.target.closest('#thought-toggle');
+        if (!btn) return;
+        thoughtExpanded = !thoughtExpanded;
+        const full = document.getElementById('ai-thought-log')?.dataset?.fullThought || '';
+        setThoughtText(full);
+    });
+
+    function getStatusColor(status) {
+        switch(status) {
+            case 'queued': return 'info';
+            case 'running': return 'primary';
+            case 'completed': return 'success';
+            case 'failed': return 'danger';
+            case 'paused': return 'warning';
+            case 'stopped': return 'dark';
+            default: return 'secondary';
+        }
+    }
+
+    async function pauseTest() {
+        const csrftoken = getCookie('csrftoken');
+        const r = await fetch(`/autotest/pause/${executionId}/`, { method: 'POST', headers: {'X-CSRFToken': csrftoken} });
+        if (!r.ok) {
+            try { alert('暂停失败'); } catch (e) {}
+        }
+    }
+
+    async function resumeTest() {
+        const csrftoken = getCookie('csrftoken');
+        const r = await fetch(`/autotest/resume/${executionId}/`, { method: 'POST', headers: {'X-CSRFToken': csrftoken} });
+        if (!r.ok) {
+            try { alert('继续失败'); } catch (e) {}
+        }
+    }
+
+    async function stopTest() {
+        if(confirm('确定要停止测试吗？')) {
+            const csrftoken = getCookie('csrftoken');
+            const r = await fetch(`/autotest/stop/${executionId}/`, { method: 'POST', headers: {'X-CSRFToken': csrftoken} });
+            if (!r.ok) {
+                try { alert('停止失败'); } catch (e) {}
+            }
+        }
+    }
+
+    function openInNewTab() {
+        if (!latestScreenshotUrl) return;
+        window.open(latestScreenshotUrl, '_blank');
+    }
+
+    function openPreview() {
+        if (!latestScreenshotUrl) return;
+        const modalEl = document.getElementById('previewModal');
+        const img = document.getElementById('modalImage');
+        img.src = latestScreenshotUrl;
+        const modal = new bootstrap.Modal(modalEl);
+        modal.show();
+    }
+
+    function applyZoom() {
+      const img = document.getElementById('live-screenshot');
+      if (!img || img.style.display === 'none') return;
+      if (!naturalW || !naturalH) return;
+      img.style.width = Math.round(naturalW * zoomScale) + 'px';
+      img.style.height = Math.round(naturalH * zoomScale) + 'px';
+    }
+
+    function computeFitScale(mode) {
+      const stage = document.getElementById('preview-stage');
+      const img = document.getElementById('live-screenshot');
+      if (!stage || !img || !naturalW || !naturalH) return null;
+      const sw = stage.clientWidth;
+      const sh = stage.clientHeight;
+      const iw = naturalW;
+      const ih = naturalH;
+      if (!sw || !sh) return null;
+      if (mode === 'width') return sw / iw;
+      if (mode === 'height') return sh / ih;
+      return Math.min(sw / iw, sh / ih);
+    }
+
+    function zoomIn() { zoomScale = Math.min(2.0, zoomScale + 0.1); applyZoom(); }
+    function zoomOut() { zoomScale = Math.max(0.4, zoomScale - 0.1); applyZoom(); }
+    function zoomReset() { zoomScale = 1.0; applyZoom(); }
+    function zoomFit() {
+      const scale = computeFitScale('both');
+      if (scale === null) return;
+      zoomScale = Math.max(0.2, Math.min(2.0, scale));
+      applyZoom();
+      const stage = document.getElementById('preview-stage');
+      if (stage) { stage.scrollTop = 0; stage.scrollLeft = 0; }
+    }
+    function zoomFitWidth() {
+      const scale = computeFitScale('width');
+      if (scale === null) return;
+      zoomScale = Math.max(0.2, Math.min(2.0, scale));
+      applyZoom();
+      const stage = document.getElementById('preview-stage');
+      if (stage) stage.scrollLeft = 0;
+    }
+    function zoomFitHeight() {
+      const scale = computeFitScale('height');
+      if (scale === null) return;
+      zoomScale = Math.max(0.2, Math.min(2.0, scale));
+      applyZoom();
+      const stage = document.getElementById('preview-stage');
+      if (stage) stage.scrollTop = 0;
+    }
+
+    startPolling();
+</script>
+{% endblock %}

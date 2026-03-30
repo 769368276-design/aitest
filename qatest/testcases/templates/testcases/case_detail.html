@@ -1,0 +1,482 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="mb-3">
+    <a href="{% url 'case_list' %}" class="btn btn-outline-secondary btn-sm">&larr; 返回列表</a>
+</div>
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+                <h2 class="card-title mb-1">{{ case.title }}</h2>
+                <div class="text-muted small">
+                    {{ case.get_priority_display }} - {{ case.get_type_display }} - {{ case.project.name }}
+                    {% if case.case_mode == "advanced" %}
+                        <span class="badge bg-info ms-2">高级用例</span>
+                    {% else %}
+                        <span class="badge bg-secondary ms-2">普通用例</span>
+                    {% endif %}
+                </div>
+            </div>
+            <div class="d-flex gap-2">
+                {% if case.case_mode != "advanced" %}
+                <form method="post" action="{% url 'case_convert_advanced' case.id %}">
+                    {% csrf_token %}
+                    <button class="btn btn-sm btn-outline-info" type="submit">转为高级用例</button>
+                </form>
+                {% endif %}
+                <a href="{% url 'case_edit' case.id %}" class="btn btn-sm btn-outline-secondary">编辑</a>
+            </div>
+        </div>
+        <h6 class="card-subtitle mb-2 text-muted">
+            
+        </h6>
+        
+        <div class="mb-3">
+            <strong>前置条件:</strong>
+            <p>{{ case.pre_condition|linebreaks }}</p>
+        </div>
+
+        {% if case.case_mode == "advanced" %}
+        <div class="mb-3">
+            <strong>参数集:</strong>
+            <div class="small text-muted">
+                {% with ds=case.parameters.datasets %}
+                    {% if ds %}
+                        共 {{ ds|length }} 组
+                    {% else %}
+                        未配置
+                    {% endif %}
+                {% endwith %}
+            </div>
+        </div>
+        {% endif %}
+        
+        <div class="mb-3">
+            <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong>测试步骤:</strong>
+                <div>
+                    <button class="btn btn-sm btn-outline-primary me-2" onclick="runAI({{ case.id }})">
+                        <i class="bi bi-robot me-1"></i>AI 自动执行
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary" onclick="addStep({{ case.id }})">
+                        <i class="bi bi-plus-circle me-1"></i>添加步骤
+                    </button>
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-hover align-middle" id="steps-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%">#</th>
+                            <th style="width: 40%">步骤描述</th>
+                            <th style="width: 40%">预期结果</th>
+                            <th style="width: 10%">参考截图</th>
+                            <th style="width: 15%">传输文件</th>
+                            <th style="width: 10%">智能生成</th>
+                            <th style="width: 10%">执行状态</th>
+                            <th style="width: 5%">操作</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for step in case.steps.all %}
+                        <tr data-step-id="{{ step.id }}">
+                            <td>{{ step.step_number }}</td>
+                            <td contenteditable="true" class="editable" onblur="updateStep({{ step.id }}, 'description', this)">{{ step.description|linebreaksbr }}</td>
+                            <td contenteditable="true" class="editable" onblur="updateStep({{ step.id }}, 'expected_result', this)">{{ step.expected_result|linebreaksbr }}</td>
+                            <td class="guide-cell">
+                                {% if step.guide_image_base64 %}
+                                    <a href="data:{{ step.guide_image_content_type|default:'image/png' }};base64,{{ step.guide_image_base64 }}" target="_blank" class="text-decoration-none guide-link">
+                                        <img src="data:{{ step.guide_image_content_type|default:'image/png' }};base64,{{ step.guide_image_base64 }}" alt="guide" class="guide-thumb" style="max-height:42px; border-radius:10px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">
+                                    </a>
+                                {% elif step.guide_image %}
+                                    <a href="{{ step.guide_image.url }}" target="_blank" class="text-decoration-none guide-link">
+                                        <img src="{{ step.guide_image.url }}" alt="guide" class="guide-thumb" style="max-height:42px; border-radius:10px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">
+                                    </a>
+                                {% else %}
+                                    <span class="text-muted small guide-empty">-</span>
+                                {% endif %}
+                            </td>
+                            <td class="transfer-file-cell">
+                                <div class="d-flex align-items-center justify-content-between gap-2">
+                                    <div class="small text-muted transfer-file-name" title="{{ step.transfer_file_name|default:'' }}">
+                                        {{ step.transfer_file_name|default:"-" }}
+                                    </div>
+                                    <div>
+                                        <input type="file" class="d-none transfer-file-input" data-step-id="{{ step.id }}">
+                                        <button type="button" class="btn btn-sm btn-outline-primary btn-transfer-file-pick" data-step-id="{{ step.id }}">上传</button>
+                                    </div>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="d-inline-flex align-items-center gap-2 smart-switch-wrap">
+                                    <div class="form-check form-switch m-0">
+                                        <input class="form-check-input smart-switch" type="checkbox"
+                                               onchange="updateStep({{ step.id }}, 'smart_data_enabled', this)"
+                                               {% if step.smart_data_enabled %}checked{% endif %}>
+                                    </div>
+                                    <span class="badge smart-badge">智能</span>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <div class="form-check form-switch d-flex justify-content-center">
+                                    <input class="form-check-input step-status-checkbox" type="checkbox" 
+                                           onchange="updateStep({{ step.id }}, 'is_executed', this)"
+                                           {% if step.is_executed %}checked{% endif %}>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                <button class="btn btn-sm btn-outline-danger" onclick="deleteStep({{ step.id }})">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% empty %}
+                        <tr id="empty-row">
+                            <td colspan="8" class="text-center text-muted">暂无步骤</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="text-muted small">
+            当前状态: {{ case.get_status_display }} <br>
+            创建人: {{ case.creator.username }} <br>
+            创建时间: {{ case.created_at }}
+        </div>
+    </div>
+</div>
+
+<style>
+    .editable:focus {
+        background-color: rgba(47, 128, 255, 0.08);
+        outline: 2px solid rgba(47, 128, 255, 0.45);
+        outline-offset: -2px;
+        padding: 5px;
+    }
+    .editable {
+        cursor: text;
+    }
+    #steps-table td {
+        vertical-align: top;
+    }
+    #steps-table td.editable {
+        white-space: pre-wrap;
+        line-height: 1.45;
+        word-break: break-word;
+        max-width: 520px;
+    }
+    #steps-table thead th {
+        white-space: nowrap;
+    }
+    #steps-table tbody tr:hover td {
+        background: rgba(15, 23, 42, 0.02);
+    }
+    .smart-switch-wrap { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02); }
+    .smart-switch-wrap .form-check-input { cursor: pointer; }
+    .smart-switch-wrap .smart-badge { background: rgba(47,128,255,.12); color: rgba(47,128,255,.95); font-weight: 800; }
+</style>
+
+<div class="modal fade" id="aiExecModeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">AI 执行模式</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="aiExecMode" id="aiExecModeHeadful" value="headful">
+                    <label class="form-check-label" for="aiExecModeHeadful">有头模式（弹出浏览器窗口）</label>
+                </div>
+                <div class="form-check mt-1">
+                    <input class="form-check-input" type="radio" name="aiExecMode" id="aiExecModeHeadless" value="headless">
+                    <label class="form-check-label" for="aiExecModeHeadless">无头模式（后台运行）</label>
+                </div>
+                <div class="text-muted small mt-2">企业内网/SSO/证书/代理插件场景建议关闭无头（使用有头模式）以便完成一次登录与环境初始化。</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmExecModeModal()">开始执行</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    const csrftoken = getCookie('csrftoken');
+
+    async function updateStep(stepId, field, element) {
+        let value;
+        if (field === 'is_executed' || field === 'smart_data_enabled') {
+            value = element.checked;
+        } else {
+            // For contenteditable, getting innerText usually works, but innerHTML might be safer for line breaks
+            // Let's use innerText to keep it simple and clean HTML tags if any pasted
+            value = element.innerText;
+        }
+
+        try {
+            const response = await fetch(`/testcases/step/${stepId}/update/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({
+                    [field]: value
+                })
+            });
+
+            if (!response.ok) {
+                console.error('Failed to update step');
+                // Optional: Show error toast
+            } else {
+                // Optional: Show success indicator (e.g., green flash)
+                if (field !== 'is_executed') {
+                    element.style.backgroundColor = 'rgba(49, 211, 155, 0.14)';
+                    setTimeout(() => {
+                        element.style.backgroundColor = '';
+                    }, 500);
+                }
+            }
+        } catch (error) {
+            console.error('Error updating step:', error);
+        }
+    }
+
+    async function addStep(caseId) {
+        try {
+            const response = await fetch(`/testcases/case/${caseId}/add-step/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    // Reload page to show new step (simplest way to handle reordering and DOM)
+                    // Or we could append DOM element manually for better UX
+                    window.location.reload();
+                }
+            }
+        } catch (error) {
+            console.error('Error adding step:', error);
+        }
+    }
+
+    async function deleteStep(stepId) {
+        if (!confirm('确定要删除此步骤吗？')) return;
+
+        try {
+            const response = await fetch(`/testcases/step/${stepId}/delete/`, {
+                method: 'POST',
+                headers: {
+                    'X-CSRFToken': csrftoken
+                }
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    // Remove row from DOM or reload
+                    const row = document.querySelector(`tr[data-step-id="${stepId}"]`);
+                    if (row) {
+                        row.remove();
+                        // Reload might be needed to re-index numbers correctly visually
+                        // Or we can just reload to be safe
+                         window.location.reload();
+                    }
+                }
+            }
+        } catch (error) {
+            console.error('Error deleting step:', error);
+        }
+    }
+
+    async function runAI(caseId) {
+        openExecModeModal({ type: 'single', caseId: caseId });
+    }
+
+    async function runAIWithMode(caseId, headless) {
+        try {
+            const response = await fetch(`/autotest/run/${caseId}/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                body: JSON.stringify({ headless: !!headless })
+            });
+            const data = await response.json();
+            if(data.success) {
+                if (data.execution_ids && data.execution_ids.length > 1) {
+                    alert(`已启动高级用例批量执行：${data.execution_ids.length} 轮。将打开第1轮控制台。`);
+                }
+                // Open console in new tab
+                window.open(`/autotest/console/${data.execution_id}/`, '_blank');
+            } else {
+                alert('启动失败: ' + data.error);
+            }
+        } catch(e) {
+            console.error(e);
+            alert('请求出错');
+        }
+    }
+
+    const execModeModalEl = document.getElementById('aiExecModeModal');
+    const execModeModal = execModeModalEl ? new bootstrap.Modal(execModeModalEl) : null;
+    let execModeTarget = null;
+
+    function getExecHeadlessDefault() {
+        try {
+            const v = localStorage.getItem('ai_exec_headless');
+            if (v === '0') return false;
+            if (v === '1') return true;
+        } catch (e) {}
+        return true;
+    }
+
+    function openExecModeModal(target) {
+        execModeTarget = target;
+        const headless = getExecHeadlessDefault();
+        const rHeadless = document.getElementById('aiExecModeHeadless');
+        const rHeadful = document.getElementById('aiExecModeHeadful');
+        if (rHeadless && rHeadful) {
+            rHeadless.checked = !!headless;
+            rHeadful.checked = !headless;
+        }
+        if (execModeModal) execModeModal.show();
+    }
+
+    async function confirmExecModeModal() {
+        const sel = document.querySelector('input[name="aiExecMode"]:checked');
+        const headless = sel ? (String(sel.value) === 'headless') : true;
+        try { localStorage.setItem('ai_exec_headless', headless ? '1' : '0'); } catch (e) {}
+        if (execModeModal) execModeModal.hide();
+        const t = execModeTarget;
+        execModeTarget = null;
+        if (!t) return;
+        if (t.type === 'single') {
+            await runAIWithMode(t.caseId, headless);
+        }
+    }
+
+    (function bindPasteForGuideImages() {
+        const editableCells = Array.from(document.querySelectorAll('tr[data-step-id] .editable'));
+        editableCells.forEach((cell) => {
+            cell.addEventListener('paste', async (e) => {
+                try {
+                    const items = e.clipboardData && e.clipboardData.items ? Array.from(e.clipboardData.items) : [];
+                    const imgItem = items.find((it) => (it.type || '').startsWith('image/'));
+                    if (!imgItem) return;
+
+                    const row = cell.closest('tr[data-step-id]');
+                    const stepId = row ? row.getAttribute('data-step-id') : null;
+                    if (!stepId) return;
+
+                    e.preventDefault();
+                    const blob = imgItem.getAsFile();
+                    if (!blob) return;
+
+                    const file = new File([blob], `paste_${Date.now()}.png`, { type: blob.type || 'image/png' });
+                    const fd = new FormData();
+                    fd.append('guide_image', file);
+
+                    const response = await fetch(`/testcases/step/${stepId}/upload-guide/`, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrftoken },
+                        body: fd
+                    });
+                    const data = await response.json();
+                    if (!data || !data.success) {
+                        alert('截图保存失败：' + (data && data.error ? data.error : '未知错误'));
+                        return;
+                    }
+
+                    const guideCell = row.querySelector('.guide-cell');
+                    if (guideCell) {
+                        const src = data.data_uri || data.url || '';
+                        if (src) {
+                            guideCell.innerHTML = `
+                                <a href="${src}" target="_blank" class="text-decoration-none guide-link">
+                                    <img src="${src}" alt="guide" class="guide-thumb" style="max-height:42px; border-radius:10px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">
+                                </a>
+                            `;
+                        }
+                    }
+
+                    const original = cell.style.backgroundColor;
+                    cell.style.transition = 'background-color 0.2s';
+                    cell.style.backgroundColor = 'rgba(34,197,94,0.14)';
+                    setTimeout(() => { cell.style.backgroundColor = original; }, 350);
+                } catch (err) {
+                    console.error(err);
+                    alert('截图粘贴保存失败');
+                }
+            });
+        });
+    })();
+
+    (function bindTransferFileUpload() {
+        const pickBtns = Array.from(document.querySelectorAll('.btn-transfer-file-pick'));
+        pickBtns.forEach((btn) => {
+            btn.addEventListener('click', function() {
+                const stepId = this.getAttribute('data-step-id');
+                const input = document.querySelector(`input.transfer-file-input[data-step-id="${stepId}"]`);
+                input?.click();
+            });
+        });
+        const inputs = Array.from(document.querySelectorAll('input.transfer-file-input'));
+        inputs.forEach((input) => {
+            input.addEventListener('change', async function() {
+                const stepId = this.getAttribute('data-step-id');
+                const file = (this.files && this.files[0]) ? this.files[0] : null;
+                if (!stepId || !file) return;
+                const fd = new FormData();
+                fd.append('transfer_file', file);
+                try {
+                    const resp = await fetch(`/testcases/step/${stepId}/upload-transfer-file/`, {
+                        method: 'POST',
+                        headers: { 'X-CSRFToken': csrftoken },
+                        body: fd
+                    });
+                    const data = await resp.json();
+                    if (!data || !data.success) {
+                        alert('传输文件保存失败：' + (data && data.error ? data.error : '未知错误'));
+                        return;
+                    }
+                    const row = document.querySelector(`tr[data-step-id="${stepId}"]`);
+                    const nameEl = row?.querySelector('.transfer-file-name');
+                    if (nameEl) nameEl.textContent = data.file_name || file.name || '已上传';
+                    const original = row?.style.backgroundColor || '';
+                    if (row) {
+                        row.style.transition = 'background-color 0.2s';
+                        row.style.backgroundColor = 'rgba(34,197,94,0.08)';
+                        setTimeout(() => { row.style.backgroundColor = original; }, 350);
+                    }
+                } catch(e) {
+                    console.error(e);
+                    alert('传输文件保存失败');
+                }
+            });
+        });
+    })();
+</script>
+{% endblock %}

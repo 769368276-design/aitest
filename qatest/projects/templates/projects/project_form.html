@@ -1,0 +1,181 @@
+{% extends 'base.html' %}
+{% load django_bootstrap5 %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ title }}</h1>
+        <div class="page-subtitle">填写项目基本信息并设置负责人</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'project_list' %}" class="btn btn-outline-secondary">返回列表</a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body">
+        <form method="post">
+            {% csrf_token %}
+            {% bootstrap_field form.name %}
+            {% bootstrap_field form.description %}
+            {% bootstrap_field form.base_url %}
+
+            <div class="mb-3">
+                <label class="form-label">测试账号</label>
+                <div class="card">
+                    <div class="card-body p-2">
+                        <div class="table-responsive">
+                            <table class="table table-sm align-middle mb-2" id="test-accounts-table">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 260px;">账号</th>
+                                        <th style="width: 260px;">密码</th>
+                                        <th style="width: 90px;" class="text-center">删除</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="test-accounts-tbody"></tbody>
+                            </table>
+                        </div>
+                        <div class="d-flex justify-content-between align-items-center gap-2">
+                            <div class="small text-muted">
+                                可添加多组账号密码；AI 默认使用第一行（用例步骤里没写账号密码时）。
+                            </div>
+                            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-account">添加账号</button>
+                        </div>
+                    </div>
+                </div>
+                <div style="display:none;">
+                    {{ form.test_accounts }}
+                </div>
+            </div>
+
+            {% bootstrap_field form.history_requirements %}
+            {% bootstrap_field form.knowledge_base %}
+            {% bootstrap_field form.status %}
+            {% bootstrap_field form.start_time %}
+            {% bootstrap_field form.end_time %}
+            <div class="d-flex gap-2">
+                {% bootstrap_button "保存" button_type="submit" button_class="btn-primary" %}
+                <a href="{% url 'project_list' %}" class="btn btn-outline-secondary">取消</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+    (function() {
+        const formEl = document.querySelector('form');
+        const rawField = document.querySelector('textarea[name="test_accounts"]');
+        const tbody = document.getElementById('test-accounts-tbody');
+        const addBtn = document.getElementById('btn-add-account');
+        if (!formEl || !rawField || !tbody) return;
+
+        const safeJsonParse = (s) => {
+            try { return JSON.parse(s); } catch (e) { return null; }
+        };
+
+        const parseLegacy = (raw) => {
+            const s = String(raw || '').trim();
+            if (!s) return [];
+            const m1 = s.match(/(?:用户名|账号|账户|user(?:name)?)\s*[:：]?\s*([A-Za-z0-9_.@-]{2,80}).*?(?:密码|password|pwd)\s*[:：]?\s*([^\s]{2,120})/is);
+            if (m1) return [{ username: (m1[1] || '').trim(), password: (m1[2] || '').trim() }];
+            const m2 = s.match(/^\s*([A-Za-z0-9_.@-]{2,80})\s*[/:\s]\s*([^\s]{2,120})\s*$/m);
+            if (m2) return [{ username: (m2[1] || '').trim(), password: (m2[2] || '').trim() }];
+            const lines = s.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
+            let u = '';
+            let p = '';
+            for (const line of lines) {
+                if (!u) {
+                    const mu = line.match(/(?:用户名|账号|账户|user(?:name)?)\s*[:：]?\s*([A-Za-z0-9_.@-]{2,80})/i);
+                    if (mu) u = (mu[1] || '').trim();
+                }
+                if (!p) {
+                    const mp = line.match(/(?:密码|password|pwd)\s*[:：]?\s*([^\s]{2,120})/i);
+                    if (mp) p = (mp[1] || '').trim();
+                }
+                if (u && p) break;
+            }
+            if (u || p) return [{ username: u, password: p }];
+            return [];
+        };
+
+        const parseAccounts = (raw) => {
+            const s = String(raw || '').trim();
+            if (!s) return [];
+            const lead = s[0];
+            if (lead === '{' || lead === '[') {
+                const obj = safeJsonParse(s);
+                if (Array.isArray(obj)) {
+                    return obj
+                        .map((x) => ({ username: String(x?.username || x?.user || x?.account || '').trim(), password: String(x?.password || x?.pwd || '').trim() }))
+                        .filter((x) => x.username || x.password);
+                }
+                if (obj && typeof obj === 'object') {
+                    const username = String(obj.username || obj.user || obj.account || '').trim();
+                    const password = String(obj.password || obj.pwd || '').trim();
+                    if (username || password) return [{ username, password }];
+                }
+            }
+            return parseLegacy(s);
+        };
+
+        const serializeAccounts = (rows) => {
+            const cleaned = (rows || [])
+                .map((x) => ({ username: String(x.username || '').trim(), password: String(x.password || '').trim() }))
+                .filter((x) => x.username || x.password);
+            return JSON.stringify(cleaned, null, 0);
+        };
+
+        const getRows = () => {
+            return Array.from(tbody.querySelectorAll('tr')).map((tr) => {
+                const u = tr.querySelector('input[name="ta_username"]')?.value || '';
+                const p = tr.querySelector('input[name="ta_password"]')?.value || '';
+                return { username: u, password: p };
+            });
+        };
+
+        const syncToHidden = () => {
+            rawField.value = serializeAccounts(getRows());
+        };
+
+        const addRow = (row) => {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+                <td><input type="text" class="form-control form-control-sm" name="ta_username" value=""></td>
+                <td><input type="password" class="form-control form-control-sm" name="ta_password" value=""></td>
+                <td class="text-center"><button type="button" class="btn btn-sm btn-outline-danger">删除</button></td>
+            `.trim();
+            const u = tr.querySelector('input[name="ta_username"]');
+            const p = tr.querySelector('input[name="ta_password"]');
+            const rm = tr.querySelector('button');
+            if (u) u.value = String(row?.username || '').trim();
+            if (p) p.value = String(row?.password || '').trim();
+            u?.addEventListener('input', syncToHidden);
+            p?.addEventListener('input', syncToHidden);
+            rm?.addEventListener('click', function() {
+                tr.remove();
+                syncToHidden();
+            });
+            tbody.appendChild(tr);
+        };
+
+        const init = () => {
+            const rows = parseAccounts(rawField.value);
+            tbody.innerHTML = '';
+            if (rows.length) {
+                rows.slice(0, 50).forEach(addRow);
+            } else {
+                addRow({ username: '', password: '' });
+            }
+            syncToHidden();
+        };
+
+        addBtn?.addEventListener('click', function() {
+            addRow({ username: '', password: '' });
+            syncToHidden();
+        });
+        formEl.addEventListener('submit', syncToHidden);
+        init();
+    })();
+</script>
+{% endblock %}

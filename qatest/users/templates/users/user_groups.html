@@ -1,0 +1,95 @@
+{% extends 'base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}我的用户组{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">我的用户组</h1>
+        <div class="page-subtitle">管理协作组与项目共享范围</div>
+    </div>
+    <div>
+        <button class="btn btn-primary" type="button" data-bs-toggle="collapse" data-bs-target="#createGroupCard">
+            <i class="bi bi-plus-lg"></i> 创建用户组
+        </button>
+    </div>
+</div>
+
+<div class="collapse mb-4 {% if form.errors %}show{% endif %}" id="createGroupCard">
+    <div class="card">
+        <div class="card-header bg-light">
+            新建用户组
+        </div>
+        <div class="card-body">
+            <form method="post">
+                {% csrf_token %}
+                <div class="row g-3">
+                    <div class="col-md-6">
+                        {{ form.name.label_tag }}
+                        {{ form.name }}
+                        {% if form.name.errors %}<div class="text-danger small">{{ form.name.errors|striptags }}</div>{% endif %}
+                    </div>
+                    <div class="col-md-6">
+                        {{ form.shared_projects.label_tag }}
+                        {{ form.shared_projects }}
+                        <div class="text-muted small mt-1">按 Ctrl/Shift 多选：选择需要在组内共享的项目</div>
+                        {% if form.shared_projects.errors %}<div class="text-danger small">{{ form.shared_projects.errors|striptags }}</div>{% endif %}
+                    </div>
+                    <div class="col-12 text-end">
+                        <button class="btn btn-primary" type="submit">创建用户组</button>
+                    </div>
+                </div>
+                {% if form.non_field_errors %}<div class="text-danger small mt-2">{{ form.non_field_errors|striptags }}</div>{% endif %}
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">组名称</th>
+                        <th>创建人</th>
+                        <th>我的角色</th>
+                        <th>创建时间</th>
+                        <th class="text-end pe-4">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in memberships %}
+                    <tr>
+                        <td class="ps-4 fw-bold">{{ m.group.name }}</td>
+                        <td class="text-muted">
+                            <i class="bi bi-person-circle me-1"></i> {{ m.group.owner.username }}
+                        </td>
+                        <td>
+                            {% if m.role == 'owner' %}
+                                <span class="badge bg-primary">Owner</span>
+                            {% elif m.role == 'admin' %}
+                                <span class="badge bg-info text-dark">Admin</span>
+                            {% else %}
+                                <span class="badge bg-secondary">Member</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">{{ m.group.created_at|date:"Y-m-d" }}</td>
+                        <td class="text-end pe-4">
+                            <a class="btn btn-sm btn-outline-primary" href="{% url 'user_group_detail' m.group.id %}">
+                                <i class="bi bi-gear"></i> 管理
+                            </a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="text-center py-5 text-muted">您还未加入任何用户组</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% include 'core/pagination.html' %}
+{% endblock %}

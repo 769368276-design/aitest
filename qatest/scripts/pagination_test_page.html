@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Pagination Test</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; padding: 16px; }
+    .shell { display: grid; grid-template-columns: 1fr; gap: 12px; max-width: 900px; margin: 0 auto; }
+    .list { height: 260px; overflow: auto; border: 1px solid #ddd; border-radius: 10px; padding: 10px; }
+    .row { padding: 10px; border-radius: 8px; background: #f6f7fb; margin-bottom: 8px; }
+    .pagination { display: flex; gap: 8px; align-items: center; }
+    .pagination .btn { padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px; background: #fff; cursor: pointer; user-select: none; }
+    .pagination .btn[disabled] { opacity: .45; cursor: not-allowed; }
+    .pagination .page { padding: 6px 10px; border: 1px solid #ccc; border-radius: 8px; background: #fff; cursor: pointer; }
+    .pagination .page.active { border-color: #7c5cff; background: rgba(124, 92, 255, 0.12); }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <div class="list" id="list"></div>
+    <div class="pagination">
+      <button class="btn" id="prev" aria-label="Previous Page">上一页</button>
+      <button class="page active" aria-current="page" data-page="1">1</button>
+      <button class="page" data-page="2">2</button>
+      <button class="btn" id="next" aria-label="Next Page">下一页</button>
+    </div>
+  </div>
+  <script>
+    let current = 1;
+    const total = 2;
+    const list = document.getElementById('list');
+    const prev = document.getElementById('prev');
+    const next = document.getElementById('next');
+    const pages = Array.from(document.querySelectorAll('.page'));
+
+    function render() {
+      list.innerHTML = '';
+      const base = (current - 1) * 30;
+      for (let i = 1; i <= 30; i++) {
+        const div = document.createElement('div');
+        div.className = 'row';
+        div.textContent = `Page ${current} · Row ${base + i}`;
+        list.appendChild(div);
+      }
+      pages.forEach(p => {
+        const n = Number(p.getAttribute('data-page') || 0);
+        if (n === current) {
+          p.classList.add('active');
+          p.setAttribute('aria-current', 'page');
+        } else {
+          p.classList.remove('active');
+          p.removeAttribute('aria-current');
+        }
+      });
+      prev.disabled = current <= 1;
+      next.disabled = current >= total;
+      list.scrollTop = 0;
+    }
+
+    prev.addEventListener('click', () => {
+      if (current > 1) { current -= 1; render(); }
+    });
+    next.addEventListener('click', () => {
+      if (current < total) { current += 1; render(); }
+    });
+    pages.forEach(p => p.addEventListener('click', () => {
+      const n = Number(p.getAttribute('data-page') || 0);
+      if (n >= 1 && n <= total) { current = n; render(); }
+    }));
+
+    render();
+  </script>
+</body>
+</html>
+

@@ -1,0 +1,31 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 12px; width: 320px; }
+      .row { display: flex; gap: 8px; align-items: center; }
+      button { padding: 8px 10px; border-radius: 8px; border: 1px solid #ccc; background: #fff; cursor: pointer; }
+      button.primary { background: #1677ff; color: #fff; border-color: #1677ff; }
+      button.danger { background: #ff4d4f; color: #fff; border-color: #ff4d4f; }
+      button:disabled { opacity: 0.6; cursor: not-allowed; }
+      .muted { color: #666; font-size: 12px; line-height: 1.4; margin-top: 8px; }
+      .stat { margin-top: 8px; font-size: 12px; color: #333; }
+      textarea { width: 100%; height: 120px; margin-top: 8px; border-radius: 8px; border: 1px solid #ddd; padding: 8px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; }
+    </style>
+  </head>
+  <body>
+    <div class="row">
+      <button id="btnStart" class="primary">开始录制</button>
+      <button id="btnStop" class="danger">停止</button>
+      <button id="btnCopy">复制JSON</button>
+    </div>
+    <div class="stat" id="stat">状态：-</div>
+    <div class="muted">
+      使用方式：开始录制后在页面里正常操作；停止后复制 JSON，粘贴到平台「录制导入」页面生成用例。
+    </div>
+    <textarea id="output" placeholder="停止后这里会显示 JSON"></textarea>
+    <script src="popup.js"></script>
+  </body>
+</html>

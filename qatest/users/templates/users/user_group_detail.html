@@ -1,0 +1,143 @@
+{% extends 'base.html' %}
+
+{% block title %}用户组详情{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ group.name }}</h1>
+        <div class="page-subtitle">创建人：{{ group.owner.username }} · 组内成员可互相可见项目/需求/用例</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'user_group_list' %}" class="btn btn-outline-secondary">返回列表</a>
+        {% if is_owner %}
+        <form method="post" action="{% url 'user_group_delete' group.id %}" onsubmit="return confirm('确认删除用户组？');">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger" type="submit">删除用户组</button>
+        </form>
+        {% else %}
+        <form method="post" action="{% url 'user_group_leave' group.id %}" onsubmit="return confirm('确认退出用户组？');">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger" type="submit">退出用户组</button>
+        </form>
+        {% endif %}
+    </div>
+</div>
+
+{% if is_manager %}
+<div class="card mb-3">
+    <div class="card-header">
+        <div class="fw-semibold">添加成员</div>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{% url 'user_group_add_member' group.id %}">
+            {% csrf_token %}
+            <div class="row g-2 align-items-end">
+                <div class="col-12 col-md-5">
+                    <label class="form-label">{{ add_form.username.label }}</label>
+                    {{ add_form.username }}
+                </div>
+                <div class="col-12 col-md-3">
+                    <label class="form-label">{{ add_form.role.label }}</label>
+                    {{ add_form.role }}
+                </div>
+                <div class="col-12 col-md-2">
+                    <button class="btn btn-primary w-100" type="submit">添加</button>
+                </div>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="card">
+    <div class="card-header">
+        <div class="fw-semibold">成员列表</div>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0 align-middle">
+                <thead>
+                    <tr>
+                        <th style="width:120px;">ID</th>
+                        <th>用户名</th>
+                        <th style="width:160px;">组内角色</th>
+                        <th style="width:220px;">加入时间</th>
+                        <th style="width:220px;" class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for m in members %}
+                    <tr>
+                        <td>{{ m.user.id }}</td>
+                        <td class="fw-semibold">{{ m.user.username }}</td>
+                        <td>
+                            {% if m.role == 'owner' %}
+                                <span class="badge bg-primary">创建人</span>
+                            {% elif m.role == 'admin' %}
+                                <span class="badge bg-secondary">管理员</span>
+                            {% else %}
+                                <span class="badge bg-light text-dark">成员</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted">{{ m.created_at|date:"Y-m-d H:i" }}</td>
+                        <td class="text-end">
+                            {% if is_manager and m.user.id != group.owner_id %}
+                                <form method="post" action="{% url 'user_group_remove_member' group.id m.user.id %}" class="d-inline" onsubmit="return confirm('确认移除成员？');">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">移除</button>
+                                </form>
+                            {% elif m.user.id == user.id and not is_owner %}
+                                <form method="post" action="{% url 'user_group_leave' group.id %}" class="d-inline" onsubmit="return confirm('确认退出用户组？');">
+                                    {% csrf_token %}
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">退出</button>
+                                </form>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="text-muted text-center py-4">暂无成员</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% include 'core/pagination.html' %}
+
+<div class="card mt-3">
+    <div class="card-header">
+        <div class="fw-semibold">共享项目</div>
+    </div>
+    <div class="card-body">
+        {% if shared_projects %}
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                {% for p in shared_projects %}
+                    <a href="/projects/{{ p.id }}/" class="badge bg-light text-dark text-decoration-none">#{{ p.id }} {{ p.name }}</a>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="text-muted small mb-3">暂无共享项目</div>
+        {% endif %}
+
+        {% if is_manager %}
+        <form method="post" action="{% url 'user_group_update_shared_projects' group.id %}">
+            {% csrf_token %}
+            <label class="form-label">更新共享项目</label>
+            <select class="form-select" name="shared_project_ids" multiple size="10">
+                {% for p in projects_qs %}
+                    <option value="{{ p.id }}" {% if p in shared_projects %}selected{% endif %}>#{{ p.id }} {{ p.name }}</option>
+                {% endfor %}
+            </select>
+            <div class="text-muted small mt-1">按 Ctrl/Shift 多选；仅这些项目会在组内共享可见</div>
+            <div class="mt-2">
+                <button class="btn btn-outline-primary" type="submit">保存共享项目</button>
+            </div>
+        </form>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

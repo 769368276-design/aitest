@@ -1,0 +1,195 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">缺陷管理</h1>
+        <div class="page-subtitle">缺陷跟踪 · 指派与状态 · 关联项目与用例</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'bug_create' %}" class="btn btn-primary"><i class="bi bi-bug me-1"></i>提交缺陷</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-4 stat-grid">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">总缺陷数</div>
+                    <div class="stat-value">{{ total }}</div>
+                </div>
+                <span class="badge bg-primary"><i class="bi bi-collection me-1"></i>Total</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">我的待办</div>
+                    <div class="stat-value">{{ my_bugs }}</div>
+                </div>
+                <span class="badge bg-danger"><i class="bi bi-person-exclamation me-1"></i>Todo</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">未修复</div>
+                    <div class="stat-value">{{ not_fixed }}</div>
+                </div>
+                <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Open</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">关键词</label>
+                <input type="text" name="keyword" class="form-control" placeholder="搜索缺陷标题或 ID" value="{{ request.GET.keyword }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">项目</label>
+                <select name="project" class="form-select" onchange="this.form.submit()">
+                    <option value="">所有项目</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if request.GET.project == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">用例</label>
+                <select name="case" class="form-select">
+                    <option value="">所有用例</option>
+                    {% for c in cases %}
+                    <option value="{{ c.id }}" {% if request.GET.case == c.id|stringformat:"s" %}selected{% endif %}>{{ c.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">开始</label>
+                <input type="date" name="date_start" class="form-control" value="{{ request.GET.date_start }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">结束</label>
+                <input type="date" name="date_end" class="form-control" value="{{ request.GET.date_end }}">
+            </div>
+            <div class="col-md-1 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1"><i class="bi bi-search"></i></button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<form id="batch-delete-form" action="{% url 'bug_batch_delete' %}" method="post">
+    {% csrf_token %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div class="form-check">
+            <input class="form-check-input" type="checkbox" id="select-all">
+            <label class="form-check-label text-muted" for="select-all">全选本页</label>
+        </div>
+        <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('确定要删除选中的缺陷吗？');">
+            <i class="bi bi-trash"></i> 批量删除
+        </button>
+    </div>
+
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 42px;" class="text-center">#</th>
+                        <th>ID</th>
+                        <th>标题</th>
+                        <th>项目</th>
+                        <th>严重程度</th>
+                        <th>优先级</th>
+                        <th>状态</th>
+                        <th>指派给</th>
+                        <th>创建时间</th>
+                        <th class="text-end pe-4">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for bug in bugs %}
+                    <tr>
+                        <td class="text-center">
+                            <input class="form-check-input" type="checkbox" name="bug_ids" value="{{ bug.id }}">
+                        </td>
+                        <td class="text-muted small">#{{ bug.id }}</td>
+                        <td>
+                            <a class="fw-bold text-decoration-none text-dark" href="{% url 'bug_detail' bug.pk %}">{{ bug.title }}</a>
+                        </td>
+                        <td>
+                            <span class="badge bg-light text-dark border">{{ bug.project.name }}</span>
+                        </td>
+                        <td>
+                            {% if bug.severity == 1 %}
+                                <span class="badge bg-danger">致命</span>
+                            {% elif bug.severity == 2 %}
+                                <span class="badge bg-danger bg-opacity-75">严重</span>
+                            {% elif bug.severity == 3 %}
+                                <span class="badge bg-warning text-dark">一般</span>
+                            {% else %}
+                                <span class="badge bg-secondary">提示</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if bug.priority == 1 %}
+                                <span class="text-danger fw-bold">P0</span>
+                            {% elif bug.priority == 2 %}
+                                <span class="text-warning fw-bold">P1</span>
+                            {% elif bug.priority == 3 %}
+                                <span class="text-info fw-bold">P2</span>
+                            {% else %}
+                                <span class="text-muted">P3</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if bug.status == 6 %}bg-success{% elif bug.status == 1 %}bg-danger{% else %}bg-warning text-dark{% endif %}">
+                                {{ bug.get_status_display }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if bug.assignee %}
+                                <div class="d-flex align-items-center gap-1">
+                                    <div class="avatar-circle bg-light text-dark rounded-circle d-flex align-items-center justify-content-center border" style="width:24px;height:24px;font-size:10px;">
+                                        {{ bug.assignee.username|first|upper }}
+                                    </div>
+                                    <span class="small">{{ bug.assignee.username }}</span>
+                                </div>
+                            {% else %}
+                                <span class="text-muted small">-</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">{{ bug.created_at|date:"Y-m-d" }}</td>
+                        <td class="text-end pe-4">
+                            <a href="{% url 'bug_edit' bug.pk %}" class="btn btn-sm btn-outline-primary">编辑</a>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10" class="text-center text-muted py-5">暂无缺陷</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</form>
+
+{% include 'core/pagination.html' %}
+
+<script>
+    document.getElementById('select-all')?.addEventListener('change', function() {
+        var checkboxes = document.querySelectorAll('input[name="bug_ids"]');
+        for (var checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    });
+</script>
+{% endblock %}

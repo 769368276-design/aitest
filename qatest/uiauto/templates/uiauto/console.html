@@ -1,0 +1,96 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h4 class="mb-0">UI 自动化控制台</h4>
+        <div class="text-muted small">{{ execution.case.title }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <span id="statusBadge" class="badge bg-secondary">PENDING</span>
+        <button class="btn btn-sm btn-outline-warning" onclick="pauseExec()">暂停</button>
+        <button class="btn btn-sm btn-outline-success" onclick="resumeExec()">继续</button>
+        <button class="btn btn-sm btn-outline-danger" onclick="stopExec()">停止</button>
+        <a class="btn btn-sm btn-outline-secondary" href="/uiauto/reports/{{ execution.id }}/">报告</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">步骤日志</div>
+            <div class="card-body" id="stepList" style="max-height:70vh; overflow:auto;"></div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card">
+            <div class="card-header">最新截图</div>
+            <div class="card-body text-center">
+                <img id="shot" src="" alt="screenshot" style="max-width:100%; max-height:68vh; display:none;">
+                <div id="shotEmpty" class="text-muted py-5">暂无截图</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const executionId = {{ execution.id }};
+let timer = null;
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+function statusColor(status) {
+    if (status === 'running') return 'primary';
+    if (status === 'completed') return 'success';
+    if (status === 'failed') return 'danger';
+    if (status === 'paused') return 'warning';
+    if (status === 'stopped') return 'dark';
+    if (status === 'queued') return 'info';
+    return 'secondary';
+}
+async function fetchStatus() {
+    const resp = await fetch(`/uiauto/status/${executionId}/`);
+    const data = await resp.json();
+    const badge = document.getElementById('statusBadge');
+    badge.textContent = String(data.status || '').toUpperCase();
+    badge.className = `badge bg-${statusColor(data.status)}`;
+    const box = document.getElementById('stepList');
+    box.innerHTML = '';
+    let latestShot = '';
+    (data.steps || []).forEach(step => {
+        const div = document.createElement('div');
+        div.className = 'border rounded p-2 mb-2';
+        div.innerHTML = `<div class="d-flex justify-content-between"><strong>Step ${step.step_number}</strong><span class="badge bg-${statusColor(step.status)}">${String(step.status).toUpperCase()}</span></div><div class="small mt-1">${step.description || ''}</div>${step.error_message ? `<div class="text-danger small mt-1">${step.error_message}</div>` : ''}`;
+        box.appendChild(div);
+        if (step.screenshot_after) latestShot = step.screenshot_after;
+    });
+    const img = document.getElementById('shot');
+    const empty = document.getElementById('shotEmpty');
+    if (latestShot) {
+        img.src = latestShot;
+        img.style.display = 'block';
+        empty.style.display = 'none';
+    }
+    if (['completed','failed','stopped'].includes(data.status)) {
+        clearInterval(timer);
+    }
+}
+async function pauseExec() { await fetch(`/uiauto/pause/${executionId}/`, {method:'POST', headers:{'X-CSRFToken': getCookie('csrftoken')}}); }
+async function resumeExec() { await fetch(`/uiauto/resume/${executionId}/`, {method:'POST', headers:{'X-CSRFToken': getCookie('csrftoken')}}); }
+async function stopExec() { await fetch(`/uiauto/stop/${executionId}/`, {method:'POST', headers:{'X-CSRFToken': getCookie('csrftoken')}}); }
+timer = setInterval(fetchStatus, {{ poll_ms|default:1000 }});
+fetchStatus();
+</script>
+{% endblock %}
+

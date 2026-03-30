@@ -1,0 +1,376 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">录制脚本</h1>
+        <div class="page-subtitle">实时录制（推荐）+ Playwright codegen（高级）</div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header fw-semibold d-flex align-items-center justify-content-between">
+        <span>实时录制（推荐）</span>
+        <a class="btn btn-sm btn-outline-secondary" href="{% url 'recorder_import_page' %}">录制导入</a>
+    </div>
+    <div class="card-body">
+        <div class="alert alert-warning d-flex align-items-start gap-2" role="alert">
+            <i class="bi bi-exclamation-triangle mt-1"></i>
+            <div>
+                <div class="fw-semibold">提示：录制功能为 Beta（测试阶段）</div>
+                <div class="small">不同网站/浏览器环境可能存在兼容性问题；遇到异常请切换“录制导入”或手工编辑用例。</div>
+            </div>
+        </div>
+        <div class="row g-3">
+            <div class="col-md-8">
+                <label class="form-label">录制 URL</label>
+                <input class="form-control" id="live-url" value="{{ url }}" placeholder="例如：https://xxx.com/login">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">项目</label>
+                <select class="form-select" id="live-project">
+                    <option value="0">不选择</option>
+                    {% for p in projects %}
+                        <option value="{{ p.id }}" {% if project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-12 d-flex gap-2 flex-wrap">
+                <button class="btn btn-primary d-inline-flex align-items-center gap-2" type="button" id="btn-live-start">
+                    <span>开始录制</span>
+                    <span class="badge beta-badge">Beta</span>
+                </button>
+                <button class="btn btn-outline-primary" type="button" id="btn-live-stop" disabled>停止</button>
+                <button class="btn btn-outline-secondary" type="button" id="btn-live-export" disabled>导出 JSON</button>
+                <button class="btn btn-outline-secondary" type="button" id="btn-live-replay" disabled>回放</button>
+                <button class="btn btn-outline-primary" type="button" id="btn-live-savecase" disabled>保存为用例</button>
+                <a class="btn btn-outline-secondary" id="btn-live-import" href="{% url 'recorder_import_page' %}">去导入生成用例</a>
+                <div class="ms-auto text-muted small text-end">
+                    <div id="live-status">状态：未录制</div>
+                    <a id="live-open-url" class="small" href="#" target="_blank" style="display:none;">手动打开录制页面</a>
+                </div>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">用例标题（保存为用例时使用）</label>
+                <input class="form-control" id="live-case-title" value="" placeholder="例如：登录-新增用户-保存">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">关联需求（可选）</label>
+                <input class="form-control" id="live-requirement-id" placeholder="需求ID（可选）">
+            </div>
+            <div class="col-lg-7">
+                <div class="border rounded p-2" style="height: 260px; overflow:auto; background:#fff;">
+                    <div class="fw-semibold small mb-2">实时事件</div>
+                    <ul class="mb-0 small" id="live-events" style="padding-left: 18px;"></ul>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <label class="form-label">导出 JSON</label>
+                <textarea class="form-control" id="live-json" style="min-height: 260px;" placeholder="点击“导出 JSON”后生成，可复制到“录制导入”页面"></textarea>
+            </div>
+        </div>
+        <div class="text-muted small mt-2">
+            提示：需要安装 QA Recorder 浏览器扩展。开始录制后会打开目标页面，新页面 URL 会附带录制 token，用于把事件实时回传到平台展示。
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-header fw-semibold">Playwright codegen（高级）</div>
+    <div class="card-body">
+        <form method="get" class="row g-3">
+            <div class="col-md-4">
+                <label class="form-label">项目</label>
+                <select class="form-select" name="project_id">
+                    <option value="0">不选择</option>
+                    {% for p in projects %}
+                        <option value="{{ p.id }}" {% if project_id == p.id %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">录制 URL</label>
+                <input class="form-control" name="url" value="{{ url }}" placeholder="例如：https://www.baidu.com">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">输出语言</label>
+                <select class="form-select" name="target">
+                    <option value="python" {% if target == 'python' %}selected{% endif %}>Python</option>
+                    <option value="ts" {% if target == 'ts' %}selected{% endif %}>TypeScript</option>
+                    <option value="js" {% if target == 'js' %}selected{% endif %}>JavaScript</option>
+                </select>
+            </div>
+            <div class="col-md-8">
+                <label class="form-label">输出文件</label>
+                <input class="form-control" name="output" value="{{ output }}" placeholder="recordings/xxx.py">
+            </div>
+            <div class="col-12">
+                <button class="btn btn-primary" type="submit">生成命令</button>
+                <a class="btn btn-outline-secondary" href="{% url 'playwright_record_download' 'ps1' %}?url={{ url|urlencode }}&target={{ target|urlencode }}&output={{ output|urlencode }}">下载 PowerShell 脚本</a>
+                <a class="btn btn-outline-secondary" href="{% url 'playwright_record_download' 'sh' %}?url={{ url|urlencode }}&target={{ target|urlencode }}&output={{ output|urlencode }}">下载 Bash 脚本</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header fw-semibold">Windows（PowerShell）</div>
+            <div class="card-body">
+                <pre class="border rounded p-2 mb-0" style="white-space:pre-wrap;">{{ win_cmd }}</pre>
+                <div class="text-muted small mt-2">运行后会打开录制窗口；你在浏览器里的操作会被转换成脚本并写到输出文件。</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header fw-semibold">macOS/Linux（bash）</div>
+            <div class="card-body">
+                <pre class="border rounded p-2 mb-0" style="white-space:pre-wrap;">{{ mac_cmd }}</pre>
+                <div class="text-muted small mt-2">codegen 需要本机桌面环境；纯服务器无 GUI 时无法录制。</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    const csrftoken = getCookie('csrftoken');
+    let liveToken = '';
+    let liveSince = 0;
+    let liveTimer = null;
+    let liveEventCount = 0;
+    let liveOpenUrl = '';
+
+    function setLiveStatus(text) {
+        const el = document.getElementById('live-status');
+        if (el) el.textContent = text;
+    }
+
+    function appendEventLine(evt) {
+        const ul = document.getElementById('live-events');
+        if (!ul) return;
+        const li = document.createElement('li');
+        const act = (evt && evt.action) ? String(evt.action) : '';
+        const sel = (evt && evt.selector) ? String(evt.selector) : '';
+        const val = (evt && evt.value) ? String(evt.value) : '';
+        const url = (evt && evt.url) ? String(evt.url) : '';
+        let line = act;
+        if (act === 'goto') line = `打开页面：${val || url}`;
+        else if (act === 'click') line = sel ? `点击：${sel}` : '点击';
+        else if (act === 'type') line = `输入：${sel || '输入框'} = ${val}`;
+        else if (act === 'select') line = `选择：${sel || '下拉框'} = ${val}`;
+        else if (act === 'press') line = `按键：${val}`;
+        else if (act === 'wait') line = `等待：${val}ms`;
+        else if (act === 'scroll') line = '滚动页面';
+        li.textContent = line;
+        ul.appendChild(li);
+        if (ul.children.length > 400) ul.removeChild(ul.firstChild);
+        ul.scrollTop = ul.scrollHeight;
+        liveEventCount += 1;
+        if (liveEventCount === 1) setLiveStatus('状态：录制中');
+    }
+
+    async function pollOnce() {
+        if (!liveToken) return;
+        try {
+            const resp = await fetch(`/autotest/record/session/${encodeURIComponent(liveToken)}/poll/?since=${liveSince}`, { credentials: 'same-origin' });
+            const data = await resp.json();
+            if (!data || !data.success) return;
+            const events = data.events || [];
+            for (const e of events) appendEventLine(e);
+            liveSince = Number(data.next_since || liveSince);
+        } catch (e) {}
+    }
+
+    function startPolling() {
+        if (liveTimer) clearInterval(liveTimer);
+        liveTimer = setInterval(pollOnce, 1000);
+        pollOnce();
+    }
+
+    function stopPolling() {
+        if (liveTimer) clearInterval(liveTimer);
+        liveTimer = null;
+    }
+
+    function buildRecordUrl(url, token) {
+        let base = String(url || '').trim();
+        if (base && !/^https?:\/\//i.test(base)) base = 'http://' + base;
+        const u = new URL(base);
+        u.searchParams.set('__qa_recorder_token', token);
+        u.searchParams.set('__qa_recorder_host', window.location.origin);
+        return u.toString();
+    }
+
+    async function liveStart() {
+        const popup = window.open('about:blank', '_blank');
+        const url = (document.getElementById('live-url')?.value || '').trim();
+        if (!url) return;
+        const projectId = (document.getElementById('live-project')?.value || '0').trim();
+        const resp = await fetch('{% url "recorder_session_new" %}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+            credentials: 'same-origin',
+            body: JSON.stringify({ project_id: projectId })
+        });
+        const data = await resp.json();
+        if (!data || !data.success) {
+            setLiveStatus('状态：创建录制会话失败');
+            return;
+        }
+        liveToken = data.token;
+        liveSince = 0;
+        liveEventCount = 0;
+        document.getElementById('live-events').innerHTML = '';
+        document.getElementById('live-json').value = '';
+        document.getElementById('btn-live-start').disabled = true;
+        document.getElementById('btn-live-stop').disabled = false;
+        document.getElementById('btn-live-export').disabled = false;
+        document.getElementById('btn-live-replay').disabled = false;
+        document.getElementById('btn-live-savecase').disabled = false;
+        setLiveStatus('状态：录制中（等待事件）');
+        startPolling();
+        const openUrl = buildRecordUrl(url, liveToken);
+        liveOpenUrl = openUrl;
+        try {
+            const a = document.getElementById('live-open-url');
+            if (a) {
+                a.href = openUrl;
+                a.style.display = 'inline';
+            }
+        } catch (e) {}
+        try {
+            if (popup && popup.location) {
+                popup.location.href = openUrl;
+            } else {
+                setLiveStatus('状态：浏览器拦截了弹窗，请允许本站点弹窗后重试');
+            }
+        } catch (e) {
+            setLiveStatus('状态：打开录制页面失败（可能被拦截弹窗）');
+        }
+        setTimeout(() => {
+            if (liveToken && liveEventCount === 0) {
+                setLiveStatus('状态：录制中（未收到事件；请确认已安装扩展/扩展已启用/目标页未丢失token）');
+            }
+        }, 3000);
+    }
+
+    async function liveStop() {
+        stopPolling();
+        try {
+            if (liveToken) {
+                await fetch(`/autotest/record/session/${encodeURIComponent(liveToken)}/commands/set/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                    credentials: 'same-origin',
+                    body: JSON.stringify({ commands: [{ action: '__stop_recording__' }] })
+                });
+            }
+        } catch (e) {}
+        document.getElementById('btn-live-start').disabled = false;
+        document.getElementById('btn-live-stop').disabled = true;
+        setLiveStatus('状态：已停止');
+    }
+
+    async function liveReplay() {
+        if (!liveToken) return;
+        try {
+            const resp = await fetch(`/autotest/record/session/${encodeURIComponent(liveToken)}/export/`, { credentials: 'same-origin' });
+            const data = await resp.json();
+            if (!data || !data.success) return;
+            const steps = (data.payload && data.payload.steps) ? data.payload.steps : [];
+            const cmds = [];
+            const url0 = (document.getElementById('live-url')?.value || '').trim();
+            const startUrl = buildRecordUrl(url0, liveToken);
+            cmds.push({ action: 'goto', value: startUrl });
+            for (const s of steps) {
+                if (!s || typeof s !== 'object') continue;
+                const action = String(s.action || '').toLowerCase();
+                const by = String(s.by || '');
+                const selector = String(s.selector || '');
+                const value = (s.value == null) ? '' : String(s.value);
+                const url = (s.url == null) ? '' : String(s.url);
+                if (!action) continue;
+                if (action === 'wait') {
+                    cmds.push({ action: 'wait', wait_ms: Number(value || 200) || 200 });
+                    continue;
+                }
+                if (action === 'goto') continue;
+                cmds.push({ action, by, selector, value, url });
+            }
+            await fetch(`/autotest/record/session/${encodeURIComponent(liveToken)}/commands/set/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                credentials: 'same-origin',
+                body: JSON.stringify({ commands: cmds })
+            });
+            setLiveStatus('状态：已下发回放命令（请查看目标页面执行）');
+            window.open(startUrl, '_blank');
+        } catch (e) {}
+    }
+
+    async function liveSaveCase() {
+        if (!liveToken) return;
+        const projectId = (document.getElementById('live-project')?.value || '0').trim();
+        const title = (document.getElementById('live-case-title')?.value || '').trim();
+        const reqId = (document.getElementById('live-requirement-id')?.value || '').trim();
+        try {
+            const resp = await fetch(`/autotest/record/session/${encodeURIComponent(liveToken)}/save-case/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                credentials: 'same-origin',
+                body: JSON.stringify({ project_id: projectId, requirement_id: reqId, title: title })
+            });
+            const data = await resp.json();
+            if (!data || !data.success) {
+                setLiveStatus('状态：保存用例失败');
+                return;
+            }
+            setLiveStatus('状态：已保存用例，正在打开详情页');
+            window.location.href = data.redirect_url;
+        } catch (e) {}
+    }
+
+    async function liveExport() {
+        if (!liveToken) return;
+        try {
+            const resp = await fetch(`/autotest/record/session/${encodeURIComponent(liveToken)}/export/`, { credentials: 'same-origin' });
+            const data = await resp.json();
+            if (!data || !data.success) return;
+            document.getElementById('live-json').value = JSON.stringify(data.payload || {}, null, 2);
+        } catch (e) {}
+    }
+
+    document.getElementById('btn-live-start')?.addEventListener('click', () => { liveStart(); });
+    document.getElementById('btn-live-stop')?.addEventListener('click', () => { liveStop(); });
+    document.getElementById('btn-live-export')?.addEventListener('click', () => { liveExport(); });
+    document.getElementById('btn-live-replay')?.addEventListener('click', () => { liveReplay(); });
+    document.getElementById('btn-live-savecase')?.addEventListener('click', () => { liveSaveCase(); });
+
+    (function initLiveTitle() {
+        const el = document.getElementById('live-case-title');
+        if (!el) return;
+        if (String(el.value || '').trim()) return;
+        const d = new Date();
+        const pad = (n) => String(n).padStart(2, '0');
+        const t = `${d.getFullYear()}${pad(d.getMonth()+1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}`;
+        el.value = `录制用例-${t}`;
+    })();
+</script>
+{% endblock %}

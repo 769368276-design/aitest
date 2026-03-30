@@ -1,0 +1,40 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">#{{ bug.id }} {{ bug.title }}</h1>
+        <div class="page-subtitle">{{ bug.get_severity_display }} · {{ bug.get_priority_display }} · {{ bug.project.name }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'bug_list' %}" class="btn btn-outline-secondary">返回列表</a>
+        <a href="{% url 'bug_edit' bug.pk %}" class="btn btn-primary"><i class="bi bi-pencil-square me-1"></i>编辑缺陷</a>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-body">
+        <div class="mb-3">
+            <strong>问题描述:</strong>
+            <p>{{ bug.description|linebreaks }}</p>
+        </div>
+        
+        <div class="mb-3">
+            <strong>复现步骤:</strong>
+            <p>{{ bug.reproduce_steps|linebreaks }}</p>
+        </div>
+
+        <div class="row">
+            <div class="col-md-6">
+                <strong>状态:</strong> {{ bug.get_status_display }} <br>
+                <strong>指派给:</strong> {{ bug.assignee.username|default:"未指派" }} <br>
+                <strong>影响版本:</strong> {{ bug.affected_version }}
+            </div>
+            <div class="col-md-6">
+                <strong>创建人:</strong> {{ bug.creator.username }} <br>
+                <strong>创建时间:</strong> {{ bug.created_at }} <br>
+                <strong>修复版本:</strong> {{ bug.fixed_version }}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <h2 class="mb-0">UI 自动化报告</h2>
+    <a class="btn btn-outline-secondary btn-sm" href="/uiauto/">返回 UI 自动化</a>
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>测试用例</th>
+                <th>状态</th>
+                <th>执行人</th>
+                <th>开始时间</th>
+                <th>结束时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exec in page_obj %}
+            <tr>
+                <td>{{ exec.id }}</td>
+                <td>{{ exec.case.title }}</td>
+                <td>
+                    <span class="badge {% if exec.status == 'completed' %}bg-success{% elif exec.status == 'failed' %}bg-danger{% elif exec.status == 'running' %}bg-primary{% elif exec.status == 'paused' %}bg-warning{% else %}bg-secondary{% endif %}">
+                        {{ exec.get_status_display }}
+                    </span>
+                </td>
+                <td>{{ exec.executor.username|default:"-" }}</td>
+                <td>{{ exec.start_time|date:"Y-m-d H:i:s" }}</td>
+                <td>{{ exec.end_time|date:"Y-m-d H:i:s"|default:"-" }}</td>
+                <td>
+                    <a class="btn btn-sm btn-outline-secondary" href="/uiauto/reports/{{ exec.id }}/">详情</a>
+                    {% if exec.status == 'running' or exec.status == 'paused' %}
+                    <a class="btn btn-sm btn-outline-primary" href="/uiauto/console/{{ exec.id }}/">控制台</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center text-muted">暂无执行记录</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% include 'core/pagination.html' %}
+{% endblock %}
+

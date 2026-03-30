@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0">自动化测试报告</h2>
+        {% if selected_case %}
+        <div class="text-muted small mt-1">用例：#{{ selected_case.id }} {{ selected_case.title }}</div>
+        {% endif %}
+    </div>
+    {% if selected_case %}
+    <a href="/testcases/{{ selected_case.id }}/" class="btn btn-outline-secondary btn-sm">返回用例</a>
+    {% endif %}
+</div>
+
+<div class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th>ID</th>
+                <th>测试用例</th>
+                <th>轮次</th>
+                <th>状态</th>
+                <th>执行人</th>
+                <th>开始时间</th>
+                <th>结束时间</th>
+                <th>操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for exec in executions %}
+            <tr>
+                <td>{{ exec.id }}</td>
+                <td>{{ exec.case.title }}</td>
+                <td>
+                    {% if exec.batch_id %}
+                        <span class="badge bg-info">第 {{ exec.run_index }}/{{ exec.run_total }} 轮</span>
+                        {% if exec.dataset_name %}
+                            <div class="small text-muted">{{ exec.dataset_name }}</div>
+                        {% endif %}
+                    {% else %}
+                        <span class="text-muted">-</span>
+                    {% endif %}
+                </td>
+                <td>
+                    <span class="badge 
+                        {% if exec.status == 'completed' %}bg-success
+                        {% elif exec.status == 'failed' %}bg-danger
+                        {% elif exec.status == 'running' %}bg-primary
+                        {% elif exec.status == 'paused' %}bg-warning
+                        {% else %}bg-secondary{% endif %}">
+                        {{ exec.get_status_display }}
+                    </span>
+                </td>
+                <td>{{ exec.executor.username }}</td>
+                <td>{{ exec.start_time|date:"Y-m-d H:i:s" }}</td>
+                <td>{{ exec.end_time|date:"Y-m-d H:i:s"|default:"-" }}</td>
+                <td>
+                    <a href="{% url 'report_detail' exec.id %}" class="btn btn-sm btn-outline-secondary"><i class="bi bi-journal-text me-1"></i>详情</a>
+                    {% if exec.status == 'running' or exec.status == 'paused' %}
+                    <a href="{% url 'console' exec.id %}" class="btn btn-sm btn-outline-primary"><i class="bi bi-terminal me-1"></i>控制台</a>
+                    {% endif %}
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="8" class="text-center">暂无执行记录</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% include 'core/pagination.html' %}
+
+{% endblock %}
