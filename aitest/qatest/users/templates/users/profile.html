@@ -1,0 +1,378 @@
+{% extends "base.html" %}
+{% load django_bootstrap5 %}
+
+{% block title %}个人中心{% endblock %}
+
+{% block container_class %}container-lg pb-5{% endblock %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-xl-10">
+        <div class="d-flex align-items-center justify-content-between mb-3">
+            <div>
+                <h1 class="page-title mb-1">个人中心</h1>
+                <div class="text-muted">管理个人资料、密码与 AI 模型配置</div>
+            </div>
+            <a href="/" class="btn btn-outline-secondary">返回工作台</a>
+        </div>
+
+        <div class="row g-4">
+            <div class="col-lg-5">
+                <div class="card h-100">
+                    <div class="card-header">
+                        基本资料
+                    </div>
+                    <div class="card-body">
+                        <form method="post" class="vstack gap-3">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="profile">
+                            {% bootstrap_form profile_form %}
+                            <button type="submit" class="btn btn-primary w-100">保存修改</button>
+                        </form>
+                    </div>
+                </div>
+            </div>
+
+            <div class="col-lg-7">
+                <div class="card">
+                    <div class="card-header d-flex align-items-center justify-content-between">
+                        <span>模型配置</span>
+                        <span class="text-muted small">仅支持视觉模型；Key 不回显，留空不修改</span>
+                    </div>
+                    <div class="card-body">
+                        <style>
+                            .ai-tabs{background:rgba(13,110,253,.06); border:1px solid rgba(0,0,0,.06); border-radius:14px; padding:6px; gap:6px}
+                            .ai-tabs .nav-link{border-radius:12px; padding:.55rem .8rem; font-weight:700; border:1px solid transparent; display:flex; align-items:center; gap:.35rem}
+                            .ai-tabs .nav-link i{font-size:1.05rem}
+                            .ai-tabs .nav-link[data-accent="testcase"]{color:#1d4ed8}
+                            .ai-tabs .nav-link[data-accent="exec"]{color:#15803d}
+                            .ai-tabs .nav-link[data-accent="ocr"]{color:#c2410c}
+                            .ai-tabs .nav-link.active[data-accent="testcase"]{background:rgba(29,78,216,.14); border-color:rgba(29,78,216,.25); box-shadow:0 6px 18px rgba(29,78,216,.10)}
+                            .ai-tabs .nav-link.active[data-accent="exec"]{background:rgba(21,128,61,.14); border-color:rgba(21,128,61,.25); box-shadow:0 6px 18px rgba(21,128,61,.10)}
+                            .ai-tabs .nav-link.active[data-accent="ocr"]{background:rgba(194,65,12,.14); border-color:rgba(194,65,12,.25); box-shadow:0 6px 18px rgba(194,65,12,.10)}
+                            .ai-tabs .nav-link:not(.active){background:rgba(255,255,255,.65)}
+                        </style>
+                        <ul class="nav nav-pills ai-tabs" id="aiModelTabs" role="tablist">
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link active ai-tab" data-accent="testcase" id="tab-testcase" data-bs-toggle="tab" data-bs-target="#pane-testcase" type="button" role="tab">
+                                    <i class="bi bi-file-earmark-text"></i> 用例生成
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link ai-tab" data-accent="exec" id="tab-exec" data-bs-toggle="tab" data-bs-target="#pane-exec" type="button" role="tab">
+                                    <i class="bi bi-lightning-charge"></i> AI执行
+                                </button>
+                            </li>
+                            <li class="nav-item" role="presentation">
+                                <button class="nav-link ai-tab" data-accent="ocr" id="tab-ocr" data-bs-toggle="tab" data-bs-target="#pane-ocr" type="button" role="tab">
+                                    <i class="bi bi-eyeglasses"></i> OCR
+                                </button>
+                            </li>
+                        </ul>
+
+                        <form method="post" class="pt-3">
+                            {% csrf_token %}
+                            <input type="hidden" name="form_type" value="ai_model">
+
+                            <datalist id="list_testcase_model"></datalist>
+                            <datalist id="list_exec_model"></datalist>
+                            <datalist id="list_ocr_model"></datalist>
+
+                            <div class="tab-content">
+                                <div class="tab-pane fade show active" id="pane-testcase" role="tabpanel" aria-labelledby="tab-testcase">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">{% bootstrap_field model_form.testcase_provider %}</div>
+                                        <div class="col-md-6">
+                                            {% bootstrap_field model_form.testcase_model %}
+                                        </div>
+                                        <div class="col-12">{% bootstrap_field model_form.testcase_base_url %}</div>
+                                        <div class="col-12">
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <label class="form-label mb-1" for="{{ model_form.testcase_api_key.id_for_label }}">{{ model_form.testcase_api_key.label }}</label>
+                                                {% if key_status.testcase %}
+                                                    <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle">已配置</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary-subtle">未配置</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="input-group">
+                                                {{ model_form.testcase_api_key }}
+                                                <button type="button" class="btn btn-outline-secondary btn-toggle-secret" data-target="{{ model_form.testcase_api_key.id_for_label }}" aria-label="显示/隐藏 Key">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            </div>
+                                            {% if model_form.testcase_api_key.errors %}
+                                                <div class="invalid-feedback d-block">{{ model_form.testcase_api_key.errors|striptags }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="pane-exec" role="tabpanel" aria-labelledby="tab-exec">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">{% bootstrap_field model_form.exec_provider %}</div>
+                                        <div class="col-md-6">
+                                            {% bootstrap_field model_form.exec_model %}
+                                        </div>
+                                        <div class="col-12">{% bootstrap_field model_form.exec_base_url %}</div>
+                                        <div class="col-12">
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <label class="form-label mb-1" for="{{ model_form.exec_api_key.id_for_label }}">{{ model_form.exec_api_key.label }}</label>
+                                                {% if key_status.exec %}
+                                                    <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle">已配置</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary-subtle">未配置</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="input-group">
+                                                {{ model_form.exec_api_key }}
+                                                <button type="button" class="btn btn-outline-secondary btn-toggle-secret" data-target="{{ model_form.exec_api_key.id_for_label }}" aria-label="显示/隐藏 Key">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            </div>
+                                            {% if model_form.exec_api_key.errors %}
+                                                <div class="invalid-feedback d-block">{{ model_form.exec_api_key.errors|striptags }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="tab-pane fade" id="pane-ocr" role="tabpanel" aria-labelledby="tab-ocr">
+                                    <div class="row g-3">
+                                        <div class="col-md-6">{% bootstrap_field model_form.ocr_provider %}</div>
+                                        <div class="col-md-6">
+                                            {% bootstrap_field model_form.ocr_model %}
+                                        </div>
+                                        <div class="col-12">{% bootstrap_field model_form.ocr_base_url %}</div>
+                                        <div class="col-12">
+                                            <div class="d-flex align-items-center justify-content-between">
+                                                <label class="form-label mb-1" for="{{ model_form.ocr_api_key.id_for_label }}">{{ model_form.ocr_api_key.label }}</label>
+                                                {% if key_status.ocr %}
+                                                    <span class="badge bg-success bg-opacity-10 text-success border border-success-subtle">已配置</span>
+                                                {% else %}
+                                                    <span class="badge bg-secondary bg-opacity-10 text-secondary border border-secondary-subtle">未配置</span>
+                                                {% endif %}
+                                            </div>
+                                            <div class="input-group">
+                                                {{ model_form.ocr_api_key }}
+                                                <button type="button" class="btn btn-outline-secondary btn-toggle-secret" data-target="{{ model_form.ocr_api_key.id_for_label }}" aria-label="显示/隐藏 Key">
+                                                    <i class="bi bi-eye"></i>
+                                                </button>
+                                            </div>
+                                            {% if model_form.ocr_api_key.errors %}
+                                                <div class="invalid-feedback d-block">{{ model_form.ocr_api_key.errors|striptags }}</div>
+                                            {% endif %}
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="d-flex gap-2 pt-3">
+                                <button type="submit" class="btn btn-primary flex-grow-1">保存模型配置</button>
+                                <button type="button" class="btn btn-outline-secondary" id="btnFillDefaults">一键填充默认</button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(() => {
+    const MODEL_CATALOG = {
+        qwen: {
+            baseUrl: "https://dashscope.aliyuncs.com/compatible-mode/v1/",
+            models: [
+                "qwen2.5-vl-72b-instruct",
+                "qwen2.5-vl-32b-instruct",
+                "qwen2.5-vl-7b-instruct",
+                "qwen-vl-max",
+                "qwen-vl-plus",
+                "qwen-plus"
+            ]
+        },
+        kimi: {
+            baseUrl: "https://api.moonshot.cn/v1/",
+            models: ["kimi-k2.5", "moonshot-v1-8k", "moonshot-v1-32k", "moonshot-v1-128k"]
+        },
+        minimax: {
+            baseUrl: "https://api.minimax.chat/v1/",
+            models: ["MiniMax-Text-01", "MiniMax-VL-01"]
+        },
+        doubao: {
+            baseUrl: "https://ark.cn-beijing.volces.com/api/v3/",
+            models: [
+                "doubao-1.5-vision-pro",
+                "doubao-1.5-pro-32k",
+                "doubao-1.5-pro",
+                "doubao-1.5-lite-32k",
+                "doubao-1.5-lite"
+            ]
+        },
+        glm: {
+            baseUrl: "https://open.bigmodel.cn/api/paas/v4/",
+            models: ["glm-4.7", "glm-4.5", "glm-4v", "glm-4", "glm-4-air"]
+        },
+        openai: {
+            baseUrl: "https://api.openai.com/v1/",
+            models: ["gpt-4o", "gpt-4o-mini", "gpt-4.1", "gpt-4.1-mini", "o3-mini"]
+        },
+        deepseek: {
+            baseUrl: "https://api.deepseek.com/",
+            models: ["deepseek-chat", "deepseek-reasoner", "deepseek-vl2", "deepseek-vl"]
+        },
+        openrouter: {
+            baseUrl: "https://openrouter.ai/api/v1/",
+            models: [
+                "openai/gpt-4o",
+                "openai/gpt-4o-mini",
+                "google/gemini-1.5-pro",
+                "anthropic/claude-3.5-sonnet",
+                "qwen/qwen2.5-vl-72b-instruct"
+            ]
+        },
+        ollama: {
+            baseUrl: "http://localhost:11434/v1/",
+            models: ["llava", "llava:13b", "qwen2.5-vl", "minicpm-v"]
+        },
+        openai_compatible: { baseUrl: "", models: [] },
+        anthropic: {
+            baseUrl: "",
+            models: ["claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229", "claude-3-sonnet-20240229"]
+        },
+        google: {
+            baseUrl: "",
+            models: ["gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-pro"]
+        }
+    };
+
+    const scopes = ["testcase", "exec", "ocr"];
+
+    function byId(id) { return document.getElementById(id); }
+
+    function setupScope(scope) {
+        const provider = byId(`id_${scope}_provider`);
+        const model = byId(`id_${scope}_model`);
+        const baseUrl = byId(`id_${scope}_base_url`);
+        const apiKey = byId(`id_${scope}_api_key`);
+        const list = byId(`list_${scope}_model`);
+
+        if (!provider || !model || !baseUrl || !list) return;
+
+        model.setAttribute("list", `list_${scope}_model`);
+        model.setAttribute("autocomplete", "off");
+        if (apiKey) apiKey.setAttribute("autocomplete", "new-password");
+
+        baseUrl.dataset.autofill = baseUrl.value ? "0" : "1";
+        baseUrl.addEventListener("input", () => { baseUrl.dataset.autofill = "0"; });
+        provider.dataset.lastProvider = String(provider.value || "").toLowerCase();
+
+        const renderList = () => {
+            const p = (provider.value || "").toLowerCase();
+            const entry = MODEL_CATALOG[p] || { models: [], baseUrl: "" };
+            list.innerHTML = (entry.models || []).map(m => `<option value="${m}"></option>`).join("");
+        };
+
+        const fillBaseUrlIfAuto = () => {
+            const p = (provider.value || "").toLowerCase();
+            const entry = MODEL_CATALOG[p] || { baseUrl: "" };
+            if (!entry.baseUrl) return;
+            if ((baseUrl.value || "").trim() === "" || baseUrl.dataset.autofill === "1") {
+                baseUrl.value = entry.baseUrl;
+                baseUrl.dataset.autofill = "1";
+            }
+        };
+
+        const fillBaseUrlIfStillDefaultOfOldProvider = () => {
+            const cur = (provider.value || "").toLowerCase();
+            const prev = String(provider.dataset.lastProvider || "").toLowerCase();
+            const curEntry = MODEL_CATALOG[cur] || { baseUrl: "" };
+            const prevEntry = MODEL_CATALOG[prev] || { baseUrl: "" };
+            const v = (baseUrl.value || "").trim();
+            if (!curEntry.baseUrl) return;
+            if (!v) {
+                baseUrl.value = curEntry.baseUrl;
+                baseUrl.dataset.autofill = "1";
+                provider.dataset.lastProvider = cur;
+                return;
+            }
+            if (baseUrl.dataset.autofill === "1") {
+                baseUrl.value = curEntry.baseUrl;
+                baseUrl.dataset.autofill = "1";
+                provider.dataset.lastProvider = cur;
+                return;
+            }
+            if (prevEntry.baseUrl && v === prevEntry.baseUrl) {
+                baseUrl.value = curEntry.baseUrl;
+                baseUrl.dataset.autofill = "1";
+                provider.dataset.lastProvider = cur;
+                return;
+            }
+            provider.dataset.lastProvider = cur;
+        };
+
+        const fillModelIfEmptyOrOldDefault = () => {
+            const cur = (provider.value || "").toLowerCase();
+            const prev = String(provider.dataset.lastProvider || "").toLowerCase();
+            const curEntry = MODEL_CATALOG[cur] || { models: [] };
+            const prevEntry = MODEL_CATALOG[prev] || { models: [] };
+            if (!model || !curEntry.models || !curEntry.models.length) return;
+            const mv = (model.value || "").trim();
+            const prevDefault = (prevEntry.models && prevEntry.models.length) ? String(prevEntry.models[0]) : "";
+            if (!mv || (prevDefault && mv === prevDefault)) {
+                model.value = String(curEntry.models[0]);
+            }
+        };
+
+        provider.addEventListener("change", () => {
+            renderList();
+            fillBaseUrlIfStillDefaultOfOldProvider();
+            fillModelIfEmptyOrOldDefault();
+        });
+        model.addEventListener("change", () => {
+            fillBaseUrlIfAuto();
+        });
+
+        renderList();
+        fillBaseUrlIfAuto();
+    }
+
+    scopes.forEach(setupScope);
+
+    const btn = byId("btnFillDefaults");
+    if (btn) {
+        btn.addEventListener("click", () => {
+            scopes.forEach(scope => {
+                const provider = byId(`id_${scope}_provider`);
+                const baseUrl = byId(`id_${scope}_base_url`);
+                const model = byId(`id_${scope}_model`);
+                if (!provider || !baseUrl || !model) return;
+                const entry = MODEL_CATALOG[(provider.value || "").toLowerCase()];
+                if (!entry) return;
+                baseUrl.value = entry.baseUrl || "";
+                baseUrl.dataset.autofill = "1";
+                if (!model.value && entry.models && entry.models.length) model.value = entry.models[0];
+            });
+        });
+    }
+
+    document.querySelectorAll(".btn-toggle-secret").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const id = btn.getAttribute("data-target");
+            if (!id) return;
+            const input = document.getElementById(id);
+            if (!input) return;
+            const now = input.getAttribute("type") === "password" ? "text" : "password";
+            input.setAttribute("type", now);
+            const icon = btn.querySelector("i");
+            if (icon) {
+                icon.classList.toggle("bi-eye", now === "password");
+                icon.classList.toggle("bi-eye-slash", now !== "password");
+            }
+        });
+    });
+})();
+</script>
+{% endblock %}

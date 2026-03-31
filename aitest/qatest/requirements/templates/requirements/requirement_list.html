@@ -1,0 +1,187 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">需求管理</h1>
+        <div class="page-subtitle">需求追踪 · 评审状态 · 关联项目与用例</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'requirement_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>创建需求</a>
+    </div>
+</div>
+
+<div class="row g-3 mb-3 stat-grid">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">总需求数</div>
+                    <div class="stat-value">{{ total }}</div>
+                </div>
+                <span class="badge bg-primary"><i class="bi bi-collection me-1"></i>Total</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">我创建的</div>
+                    <div class="stat-value">{{ my_reqs }}</div>
+                </div>
+                <span class="badge bg-success"><i class="bi bi-person-check me-1"></i>Mine</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">待评审</div>
+                    <div class="stat-value">{{ pending_review }}</div>
+                </div>
+                <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-3">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">关键词</label>
+                <input type="text" name="keyword" class="form-control" placeholder="搜索需求标题或 ID" value="{{ request.GET.keyword }}">
+            </div>
+            <div class="col-md-3">
+                <label class="form-label small text-muted mb-1">项目</label>
+                <select name="project" class="form-select">
+                    <option value="">所有项目</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if request.GET.project == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">开始</label>
+                <input type="date" name="date_start" class="form-control" value="{{ request.GET.date_start }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">结束</label>
+                <input type="date" name="date_end" class="form-control" value="{{ request.GET.date_end }}">
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100"><i class="bi bi-search me-1"></i>筛选</button>
+            </div>
+            <div class="col-12 d-flex gap-2 mt-2">
+                <a href="/requirements/" class="btn btn-outline-secondary">重置</a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<form method="post" action="{% url 'requirement_bulk_delete' %}" id="req-bulk-form">
+    {% csrf_token %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+            <div class="fw-semibold">需求列表</div>
+            <div class="d-flex gap-2">
+                <button type="submit" class="btn btn-outline-danger btn-sm" id="btn-req-bulk-delete" disabled>批量删除</button>
+            </div>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 42px;" class="text-center">
+                            <input class="form-check-input" type="checkbox" id="req-select-all">
+                        </th>
+                        <th>ID</th>
+                        <th>标题</th>
+                        <th>项目</th>
+                        <th>类型</th>
+                        <th>优先级</th>
+                        <th>状态</th>
+                        <th>创建人</th>
+                        <th>创建时间</th>
+                        <th class="text-end">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for req in requirements %}
+                    <tr>
+                        <td class="text-center">
+                            <input class="form-check-input req-row-check" type="checkbox" name="requirement_ids" value="{{ req.id }}">
+                        </td>
+                        <td>{{ req.id }}</td>
+                        <td><a class="fw-semibold text-decoration-none" href="{% url 'requirement_detail' req.pk %}">{{ req.title }}</a></td>
+                        <td>{{ req.project.name }}</td>
+                        <td>{{ req.get_type_display }}</td>
+                        <td>{{ req.get_priority_display }}</td>
+                        <td><span class="badge bg-secondary">{{ req.get_status_display }}</span></td>
+                        <td>{{ req.creator.username }}</td>
+                        <td>{{ req.created_at|date:"Y-m-d H:i" }}</td>
+                        <td class="text-end">
+                            <a href="{% url 'requirement_edit' req.pk %}" class="btn btn-sm btn-outline-primary">编辑</a>
+                            <button type="submit" class="btn btn-sm btn-outline-danger"
+                                    formaction="{% url 'requirement_delete' req.pk %}"
+                                    formmethod="post"
+                                    onclick="return confirm('确认删除需求：{{ req.title }}？');">
+                                删除
+                            </button>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10" class="text-center text-muted py-4">暂无需求</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</form>
+
+{% include 'core/pagination.html' %}
+
+<script>
+    (function() {
+        const selectAll = document.getElementById('req-select-all');
+        const bulkForm = document.getElementById('req-bulk-form');
+        const bulkBtn = document.getElementById('btn-req-bulk-delete');
+
+        function getChecks() {
+            return Array.from(document.querySelectorAll('.req-row-check'));
+        }
+        function updateBulkState() {
+            const checks = getChecks();
+            const checked = checks.filter(c => c.checked);
+            if (bulkBtn) bulkBtn.disabled = checked.length === 0;
+            if (selectAll) selectAll.checked = checks.length > 0 && checked.length === checks.length;
+        }
+
+        selectAll?.addEventListener('change', function() {
+            getChecks().forEach(c => c.checked = selectAll.checked);
+            updateBulkState();
+        });
+        document.addEventListener('change', function(e) {
+            if (e.target && e.target.classList && e.target.classList.contains('req-row-check')) {
+                updateBulkState();
+            }
+        });
+        bulkForm?.addEventListener('submit', function(e) {
+            const active = document.activeElement;
+            if (active && active.id === 'btn-req-bulk-delete') {
+                const count = getChecks().filter(c => c.checked).length;
+                if (!count) {
+                    e.preventDefault();
+                    return;
+                }
+                if (!confirm(`确认批量删除 ${count} 个需求？`)) {
+                    e.preventDefault();
+                }
+            }
+        });
+        updateBulkState();
+    })();
+</script>
+{% endblock %}

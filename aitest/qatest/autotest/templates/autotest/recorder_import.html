@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">录制导入</h1>
+        <div class="page-subtitle">用浏览器扩展录制操作，导入生成用例步骤</div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-7">
+        <div class="card">
+            <div class="card-body">
+                <form method="post" action="{% url 'recorder_import_submit' %}">
+                    {% csrf_token %}
+                    <div class="mb-3">
+                        <label class="form-label">所属项目</label>
+                        <select name="project_id" class="form-select" required>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}" {% if p.id == project_id %}selected{% endif %}>{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">关联需求（可选）</label>
+                        <select name="requirement_id" class="form-select">
+                            <option value="">不关联</option>
+                            {% for r in requirements %}
+                            <option value="{{ r.id }}">{{ r.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">用例标题</label>
+                        <input type="text" name="title" class="form-control" value="{{ default_title }}" maxlength="200" required />
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">录制 JSON</label>
+                        <textarea name="payload" class="form-control" style="min-height: 280px;" placeholder="粘贴 QA Recorder 扩展导出的 JSON" required></textarea>
+                        <div class="form-text">建议先用扩展录制一段最短路径（打开页面→点击→输入→保存），确认可导入后再录长流程。</div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary">导入生成用例</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-5">
+        <div class="card">
+            <div class="card-body">
+                <div class="fw-semibold mb-2">使用说明</div>
+                <ol class="mb-0">
+                    <li>安装 QA Recorder 扩展（Chrome 加载已解压扩展）。</li>
+                    <li>打开目标系统页面，开始录制。</li>
+                    <li>完成操作后停止，复制 JSON。</li>
+                    <li>粘贴到左侧并导入生成用例步骤。</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

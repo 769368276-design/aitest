@@ -1,0 +1,107 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card shadow">
+            <div class="card-header bg-primary text-white">
+                <h4 class="mb-0"><i class="bi bi-robot"></i> AI 智能执行测试</h4>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 输入操作步骤，AI 将自动执行测试，并将其保存为测试用例。
+                </div>
+                
+                <form id="ai-execute-form">
+                    <div class="mb-3">
+                        <label for="title" class="form-label">测试标题</label>
+                        <input type="text" class="form-control" id="title" placeholder="例如：验证百度搜索功能" required>
+                    </div>
+                    
+                    <div class="mb-3">
+                        <label for="steps" class="form-label">操作步骤 (每行一步)</label>
+                        <textarea class="form-control" id="steps" rows="8" placeholder="1. 打开 https://www.baidu.com&#10;2. 在搜索框输入 'Playwright'&#10;3. 点击搜索按钮&#10;4. 验证页面包含 'Playwright' 相关结果" required></textarea>
+                    </div>
+
+                    <div class="row mb-3">
+                        <div class="col-md-6">
+                            <label for="project" class="form-label">所属项目</label>
+                            <select class="form-select" id="project" required>
+                                {% for p in projects %}
+                                <option value="{{ p.id }}">{{ p.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label for="requirement" class="form-label">关联需求 (可选)</label>
+                            <select class="form-select" id="requirement">
+                                <option value="">无</option>
+                                {% for r in requirements %}
+                                <option value="{{ r.id }}">{{ r.title }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="d-grid gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg" id="btn-submit">
+                            <i class="bi bi-play-fill"></i> 开始执行并保存用例
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('ai-execute-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+        
+        const btn = document.getElementById('btn-submit');
+        const originalText = btn.innerHTML;
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 正在创建环境...';
+
+        const title = document.getElementById('title').value;
+        const stepsText = document.getElementById('steps').value;
+        const projectId = document.getElementById('project').value;
+        const requirementId = document.getElementById('requirement').value;
+
+        // Convert text steps to list
+        const steps = stepsText.split('\n').filter(line => line.trim() !== '');
+
+        try {
+            const response = await fetch('/autotest/execute-direct/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({
+                    title: title,
+                    steps: steps,
+                    project_id: projectId,
+                    requirement_id: requirementId
+                })
+            });
+
+            const data = await response.json();
+            
+            if (data.success) {
+                // Redirect to console
+                window.location.href = `/autotest/console/${data.execution_id}/`;
+            } else {
+                alert('执行失败: ' + data.error);
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            }
+        } catch (error) {
+            console.error('Error:', error);
+            alert('请求出错，请检查网络');
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    });
+</script>
+{% endblock %}

@@ -1,0 +1,926 @@
+{% extends 'base.html' %}
+{% load django_bootstrap5 %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ title }}</h1>
+        <div class="page-subtitle">编辑用例基本信息与测试步骤</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'case_list' %}" class="btn btn-outline-secondary">返回列表</a>
+    </div>
+</div>
+<style>
+  .guide-dropzone {
+    border: 1px dashed rgba(15,23,42,.25);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: rgba(15,23,42,.02);
+    cursor: pointer;
+    outline: none;
+    transition: border-color .12s ease, background-color .12s ease, box-shadow .12s ease;
+  }
+  .guide-dropzone:focus {
+    border-color: rgba(59,130,246,.65);
+    background: rgba(59,130,246,.06);
+    box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+  }
+  .guide-dropzone.has-file {
+    border-style: solid;
+    background: rgba(34,197,94,.06);
+    border-color: rgba(34,197,94,.35);
+  }
+  .guide-dropzone .hint { color: rgba(15,23,42,.65); font-size: 12px; }
+  .guide-dropzone .main { font-weight: 600; font-size: 13px; }
+  .guide-upload-wrap { min-width: 220px; }
+  .step-drag-handle { cursor: grab; user-select: none; }
+  .step-row.dragging { opacity: .7; }
+  .smart-switch-wrap { padding: 6px 10px; border-radius: 999px; border: 1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02); }
+  .smart-switch-wrap .form-check-input { cursor: pointer; }
+  .smart-switch-wrap .smart-badge { background: rgba(47,128,255,.12); color: rgba(47,128,255,.95); font-weight: 800; }
+</style>
+<form method="post" enctype="multipart/form-data">
+    {% csrf_token %}
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-4">{% bootstrap_field form.project %}</div>
+                <div class="col-md-4">{% bootstrap_field form.requirement %}</div>
+                <div class="col-md-4">{% bootstrap_field form.case_mode %}</div>
+                <div class="col-md-12">{% bootstrap_field form.title %}</div>
+                <div class="col-md-12">{% bootstrap_field form.pre_condition %}</div>
+                <div class="col-md-3">{% bootstrap_field form.type %}</div>
+                <div class="col-md-3">{% bootstrap_field form.execution_type %}</div>
+                <div class="col-md-3">{% bootstrap_field form.priority %}</div>
+                <div class="col-md-3">{% bootstrap_field form.status %}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3" id="advanced-box">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">高级用例参数集</div>
+            <div class="small text-muted">使用 {% templatetag openvariable %}var{% templatetag closevariable %} 占位符，在执行时按数据集替换</div>
+        </div>
+        <div class="card-body">
+            <div class="row g-3 mb-2" id="ds-top-fields" style="display:none;">
+                <div class="col-md-3">
+                    <label class="form-label">最多执行轮次</label>
+                    <input class="form-control" id="ds-max-runs" type="number" min="1" step="1" value="10">
+                </div>
+                <div class="col-md-3 d-flex align-items-end">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="ds-stop-on-fail">
+                        <label class="form-check-label" for="ds-stop-on-fail">遇到失败停止后续轮次</label>
+                    </div>
+                </div>
+                <div class="col-md-6 d-flex align-items-end justify-content-end gap-2">
+                    <button type="button" class="btn btn-outline-primary" data-ds-action="add-dataset"><i class="bi bi-plus-lg me-1"></i>添加数据集</button>
+                    <button type="button" class="btn btn-outline-secondary" data-ds-action="toggle-raw">JSON 编辑</button>
+                </div>
+            </div>
+
+            <div id="ds-list" class="d-flex flex-column gap-2" style="display:none;"></div>
+
+            <div id="parameters-raw-wrap" class="mt-3">
+                {% bootstrap_field form.parameters %}
+                <div class="small text-muted">
+                    示例：
+                    <span class="mono">{"datasets":[{"name":"数据集1","vars":{"email":"a@xx.com","page":1}},{"name":"数据集2","vars":{"email":"b@xx.com","page":2}}],"max_runs":10,"stop_on_fail":false}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <h4 class="mt-4 mb-3">测试步骤</h4>
+    {{ formset.management_form }}
+    {% if formset.non_form_errors %}
+        <div class="alert alert-danger">{{ formset.non_form_errors }}</div>
+    {% endif %}
+    <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center gap-2">
+            <div class="fw-semibold">步骤列表</div>
+            <button type="button" class="btn btn-outline-primary btn-sm" id="btn-add-step"><i class="bi bi-plus-lg me-1"></i>添加步骤</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0" id="steps-table">
+                    <thead>
+                        <tr>
+                            <th style="width: 90px;">序号</th>
+                            <th>步骤描述</th>
+                            <th>预期结果</th>
+                            <th style="width: 360px;">参考截图</th>
+                            <th style="width: 280px;">传输文件</th>
+                            <th style="width: 120px;" class="text-center">智能生成</th>
+                            <th style="width: 90px;" class="text-center">删除</th>
+                        </tr>
+                    </thead>
+                    <tbody id="steps-tbody">
+                        {% for step_form in formset %}
+                        <tr class="step-row">
+                            <td>
+                                <span class="text-muted step-drag-handle me-2" draggable="true" title="拖动排序"><i class="bi bi-grip-vertical"></i></span>
+                                {{ step_form.step_number }}
+                                {% if step_form.step_number.errors %}<div class="text-danger small mt-1">{{ step_form.step_number.errors|striptags }}</div>{% endif %}
+                            </td>
+                            <td>
+                                {{ step_form.description }}
+                                {% if step_form.description.errors %}<div class="text-danger small mt-1">{{ step_form.description.errors|striptags }}</div>{% endif %}
+                            </td>
+                            <td>
+                                {{ step_form.expected_result }}
+                                {% if step_form.expected_result.errors %}<div class="text-danger small mt-1">{{ step_form.expected_result.errors|striptags }}</div>{% endif %}
+                            </td>
+                            <td>
+                                <div class="small text-muted mb-1">上传后会按红框/标注解析为操作提示</div>
+                                <div class="d-flex align-items-start gap-2">
+                                    <div style="min-width: 220px;">{{ step_form.guide_image }}</div>
+                                    <div class="flex-grow-1">
+                                        {% if step_form.instance.guide_image_base64 %}
+                                            <a class="guide-link text-decoration-none" href="data:{{ step_form.instance.guide_image_content_type|default:'image/png' }};base64,{{ step_form.instance.guide_image_base64 }}" target="_blank">
+                                                <img class="guide-thumb" src="data:{{ step_form.instance.guide_image_content_type|default:'image/png' }};base64,{{ step_form.instance.guide_image_base64 }}" alt="guide" style="width:100%; max-height:120px; object-fit:contain; border-radius:12px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">
+                                            </a>
+                                        {% elif step_form.instance.guide_image %}
+                                            <a class="guide-link text-decoration-none" href="{{ step_form.instance.guide_image.url }}" target="_blank">
+                                                <img class="guide-thumb" src="{{ step_form.instance.guide_image.url }}" alt="guide" style="width:100%; max-height:120px; object-fit:contain; border-radius:12px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">
+                                            </a>
+                                        {% else %}
+                                            <a class="guide-link text-decoration-none" href="#" target="_blank" style="display:none;">
+                                                <img class="guide-thumb" src="" alt="guide" style="width:100%; max-height:120px; object-fit:contain; border-radius:12px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">
+                                            </a>
+                                        {% endif %}
+                                        <div class="mt-2">
+                                            <button type="button" class="btn btn-sm btn-outline-danger btn-guide-remove" {% if not step_form.instance.guide_image %}style="display:none;"{% endif %}>删除截图</button>
+                                        </div>
+                                    </div>
+                                </div>
+                                {{ step_form.guide_image_clear }}
+                                {% if step_form.guide_image.errors %}<div class="text-danger small mt-1">{{ step_form.guide_image.errors|striptags }}</div>{% endif %}
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-start gap-2">
+                                    <div style="min-width: 220px;">
+                                        {{ step_form.transfer_file_upload }}
+                                        {% if step_form.transfer_file_upload.errors %}<div class="text-danger small mt-1">{{ step_form.transfer_file_upload.errors|striptags }}</div>{% endif %}
+                                    </div>
+                                    <div class="flex-grow-1">
+                                        {% if step_form.instance.transfer_file_name %}
+                                            <div class="small text-muted mb-2 transfer-file-name" title="{{ step_form.instance.transfer_file_name }}">{{ step_form.instance.transfer_file_name }}</div>
+                                            <button type="button" class="btn btn-sm btn-outline-danger btn-transfer-file-remove">删除文件</button>
+                                        {% else %}
+                                            <div class="small text-muted mb-2 transfer-file-name">未上传</div>
+                                            <button type="button" class="btn btn-sm btn-outline-danger btn-transfer-file-remove" style="display:none;">删除文件</button>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                {{ step_form.transfer_file_clear }}
+                            </td>
+                            <td class="text-center">
+                                <div class="d-inline-flex align-items-center gap-2 smart-switch-wrap">
+                                    <div class="form-check form-switch m-0">
+                                        {{ step_form.smart_data_enabled }}
+                                    </div>
+                                    <span class="badge smart-badge">智能</span>
+                                </div>
+                            </td>
+                            <td class="text-center">
+                                {% if formset.can_delete %}
+                                    <div class="d-flex justify-content-center gap-2">
+                                        <button type="button" class="btn btn-sm btn-outline-danger btn-step-remove" title="删除步骤">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                        <div class="form-check d-none">
+                                            {{ step_form.DELETE }}
+                                        </div>
+                                {% endif %}
+                            </td>
+                            {% for hidden in step_form.hidden_fields %}{{ hidden }}{% endfor %}
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <template id="step-row-template">
+        <tr class="step-row">
+            <td><span class="text-muted step-drag-handle me-2" draggable="true" title="拖动排序"><i class="bi bi-grip-vertical"></i></span>{{ formset.empty_form.step_number }}</td>
+            <td>{{ formset.empty_form.description }}</td>
+            <td>{{ formset.empty_form.expected_result }}</td>
+            <td>
+                <div class="small text-muted mb-1">上传后会按红框/标注解析为操作提示</div>
+                <div class="d-flex align-items-start gap-2">
+                    <div style="min-width: 220px;">{{ formset.empty_form.guide_image }}</div>
+                    <div class="flex-grow-1">
+                        <a class="guide-link text-decoration-none" href="#" target="_blank" style="display:none;">
+                            <img class="guide-thumb" src="" alt="guide" style="width:100%; max-height:120px; object-fit:contain; border-radius:12px; border:1px solid rgba(15,23,42,.10); background: rgba(15,23,42,.02);">
+                        </a>
+                        <div class="mt-2">
+                            <button type="button" class="btn btn-sm btn-outline-danger btn-guide-remove" style="display:none;">删除截图</button>
+                        </div>
+                    </div>
+                </div>
+                {{ formset.empty_form.guide_image_clear }}
+            </td>
+            <td>
+                <div class="d-flex align-items-start gap-2">
+                    <div style="min-width: 220px;">
+                        {{ formset.empty_form.transfer_file_upload }}
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="small text-muted mb-2 transfer-file-name">未上传</div>
+                        <button type="button" class="btn btn-sm btn-outline-danger btn-transfer-file-remove" style="display:none;">删除文件</button>
+                    </div>
+                </div>
+                {{ formset.empty_form.transfer_file_clear }}
+            </td>
+            <td class="text-center">
+                <div class="d-inline-flex align-items-center gap-2 smart-switch-wrap">
+                    <div class="form-check form-switch m-0">
+                        {{ formset.empty_form.smart_data_enabled }}
+                    </div>
+                    <span class="badge smart-badge">智能</span>
+                </div>
+            </td>
+            <td class="text-center">
+                <div class="d-flex justify-content-center gap-2">
+                    <button type="button" class="btn btn-sm btn-outline-danger btn-step-remove" title="删除步骤">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                    <div class="form-check d-none">
+                        {{ formset.empty_form.DELETE }}
+                    </div>
+                </div>
+            </td>
+            {% for hidden in formset.empty_form.hidden_fields %}{{ hidden }}{% endfor %}
+        </tr>
+    </template>
+
+    <div class="mt-3">
+        {% bootstrap_button "保存" button_type="submit" button_class="btn-primary" %}
+        <a href="{% url 'case_list' %}" class="btn btn-outline-secondary">取消</a>
+    </div>
+</form>
+
+<script>
+    (function() {
+        function safeJsonParse(s) {
+            try { return JSON.parse(String(s || '')); } catch (e) { return null; }
+        }
+        function parseValue(v) {
+            const s = String(v ?? '').trim();
+            if (s === '') return '';
+            if (s === 'true') return true;
+            if (s === 'false') return false;
+            if (/^-?\d+$/.test(s)) return Number.parseInt(s, 10);
+            if (/^-?\d+\.\d+$/.test(s)) return Number.parseFloat(s);
+            return s;
+        }
+        function parseValueOrList(v) {
+            const raw = String(v ?? '');
+            if (raw.includes('\n') || raw.includes(',') || raw.includes('，') || raw.includes('；') || raw.includes(';') || raw.includes('、') || raw.includes('|')) {
+                const parts = raw.split(/[\n,，;；、|]+/).map((x) => String(x || '').trim()).filter(Boolean);
+                if (!parts.length) return '';
+                const vals = parts.map(parseValue);
+                return vals.length === 1 ? vals[0] : vals;
+            }
+            return parseValue(raw);
+        }
+        function normalizeState(obj) {
+            const out = { datasets: [], max_runs: 10, stop_on_fail: false };
+            if (obj && typeof obj === 'object') {
+                if (Array.isArray(obj.datasets)) out.datasets = obj.datasets;
+                if (obj.max_runs !== undefined && obj.max_runs !== null && obj.max_runs !== '') out.max_runs = Number(obj.max_runs) || 10;
+                if (obj.stop_on_fail !== undefined) out.stop_on_fail = Boolean(obj.stop_on_fail);
+            }
+            out.datasets = (out.datasets || []).map((d, i) => {
+                const name = String((d && d.name) ? d.name : `数据集${i + 1}`);
+                const vars = (d && typeof d.vars === 'object' && d.vars) ? d.vars : {};
+                return { name, vars };
+            });
+            if (!out.datasets.length) out.datasets = [{ name: '数据集1', vars: {} }];
+            if (!Number.isFinite(out.max_runs) || out.max_runs < 1) out.max_runs = 10;
+            return out;
+        }
+        function stateToJson(state) {
+            const datasets = (state.datasets || []).map((d, i) => {
+                const name = String(d?.name || `数据集${i + 1}`).trim() || `数据集${i + 1}`;
+                const vars = {};
+                const src = d?.vars && typeof d.vars === 'object' ? d.vars : {};
+                Object.keys(src).forEach((k) => {
+                    const kk = String(k || '').trim();
+                    if (!kk) return;
+                    vars[kk] = src[k];
+                });
+                return { name, vars };
+            });
+            return { datasets, max_runs: Number(state.max_runs) || 10, stop_on_fail: Boolean(state.stop_on_fail) };
+        }
+        function buildVarsArray(varsObj) {
+            const rows = [];
+            if (varsObj && typeof varsObj === 'object') {
+                Object.keys(varsObj).forEach((k) => rows.push({ k: String(k), v: varsObj[k] }));
+            }
+            if (!rows.length) rows.push({ k: '', v: '' });
+            return rows;
+        }
+        function escAttr(s) {
+            return String(s ?? '')
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/"/g, '&quot;')
+                .replace(/'/g, '&#39;');
+        }
+        function renderDatasetCard(ds, idx) {
+            const wrap = document.createElement('div');
+            wrap.className = 'card';
+            wrap.dataset.dsIndex = String(idx);
+            const header = document.createElement('div');
+            header.className = 'card-header d-flex justify-content-between align-items-center gap-2';
+            header.innerHTML = `
+                <div class="d-flex align-items-center gap-2" style="min-width:0;">
+                    <span class="badge bg-primary">数据集</span>
+                    <input class="form-control form-control-sm" style="max-width: 260px;" data-ds-field="name" value="${escAttr(ds.name || '')}">
+                </div>
+                <button type="button" class="btn btn-sm btn-outline-danger" data-ds-action="remove-dataset"><i class="bi bi-trash"></i></button>
+            `;
+            const body = document.createElement('div');
+            body.className = 'card-body';
+            const varsRows = buildVarsArray(ds.vars || {});
+            const rowsHtml = varsRows.map((r, i) => `
+                <tr data-var-key="${escAttr(r.k || '')}">
+                    <td style="width: 44%;">
+                        <input class="form-control form-control-sm" data-var-field="key" value="${escAttr(r.k || '')}">
+                    </td>
+                    <td style="width: 44%;">
+                        <textarea class="form-control form-control-sm" data-var-field="val" rows="1" style="resize: vertical; min-height: 32px;">${escAttr(r.v ?? '')}</textarea>
+                    </td>
+                    <td style="width: 12%;" class="text-end">
+                        <button type="button" class="btn btn-sm btn-outline-secondary" data-ds-action="remove-var"><i class="bi bi-x-lg"></i></button>
+                    </td>
+                </tr>
+            `).join('');
+            body.innerHTML = `
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="fw-semibold">变量</div>
+                    <button type="button" class="btn btn-sm btn-outline-primary" data-ds-action="add-var"><i class="bi bi-plus-lg me-1"></i>添加变量</button>
+                </div>
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>变量名</th>
+                                <th>变量值</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mt-2">变量名支持字母/数字/下划线/短横线；变量值支持用逗号或换行填写多个值（将按值数量循环执行）。</div>
+            `;
+            wrap.appendChild(header);
+            wrap.appendChild(body);
+            return wrap;
+        }
+
+        const box = document.getElementById('advanced-box');
+        const rawWrap = document.getElementById('parameters-raw-wrap');
+        const rawField = document.getElementById('id_parameters');
+        const dsList = document.getElementById('ds-list');
+        const maxRunsInput = document.getElementById('ds-max-runs');
+        const stopOnFailInput = document.getElementById('ds-stop-on-fail');
+        let dsState = normalizeState(safeJsonParse(rawField?.value));
+
+        function syncTopFieldsFromState() {
+            if (maxRunsInput) maxRunsInput.value = String(dsState.max_runs ?? 10);
+            if (stopOnFailInput) stopOnFailInput.checked = Boolean(dsState.stop_on_fail);
+        }
+        function writeStateToRaw() {
+            if (!rawField) return;
+            const obj = stateToJson(dsState);
+            rawField.value = JSON.stringify(obj, null, 2);
+        }
+        function renderAll() {
+            if (!dsList) return;
+            dsList.innerHTML = '';
+            (dsState.datasets || []).forEach((ds, idx) => {
+                dsList.appendChild(renderDatasetCard(ds, idx));
+            });
+            const removeBtns = dsList.querySelectorAll('[data-ds-action="remove-dataset"]');
+            if (removeBtns && removeBtns.length === 1) {
+                removeBtns[0].setAttribute('disabled', 'disabled');
+            } else {
+                removeBtns.forEach((b) => b.removeAttribute('disabled'));
+            }
+            syncTopFieldsFromState();
+            writeStateToRaw();
+            const top = document.getElementById('ds-top-fields');
+            if (top) top.style.display = '';
+            dsList.style.display = '';
+            if (rawWrap) rawWrap.style.display = 'none';
+        }
+
+        function setAdvancedVisible() {
+            const mode = (document.getElementById('id_case_mode')?.value || 'normal').toLowerCase();
+            if (!box) return;
+            box.style.display = (mode === 'advanced') ? 'block' : 'none';
+            if (mode === 'advanced') {
+                dsState = normalizeState(safeJsonParse(rawField?.value));
+                renderAll();
+            }
+        }
+        document.getElementById('id_case_mode')?.addEventListener('change', setAdvancedVisible);
+        maxRunsInput?.addEventListener('input', function() {
+            dsState.max_runs = Number(this.value) || 10;
+            writeStateToRaw();
+        });
+        stopOnFailInput?.addEventListener('change', function() {
+            dsState.stop_on_fail = Boolean(this.checked);
+            writeStateToRaw();
+        });
+        box?.addEventListener('click', function(e) {
+            const btn = e.target.closest('[data-ds-action]');
+            if (!btn) return;
+            const action = btn.getAttribute('data-ds-action');
+            if (action === 'toggle-raw') {
+                if (!rawWrap || !dsList) return;
+                const top = document.getElementById('ds-top-fields');
+                const rawVisible = (rawWrap.style.display !== 'none');
+                if (!rawVisible) {
+                    rawWrap.style.display = 'block';
+                    if (top) top.style.display = 'none';
+                    dsList.style.display = 'none';
+                    btn.textContent = '表单编辑';
+                } else {
+                    const obj = safeJsonParse(rawField?.value);
+                    dsState = normalizeState(obj);
+                    rawWrap.style.display = 'none';
+                    if (top) top.style.display = '';
+                    dsList.style.display = '';
+                    btn.textContent = 'JSON 编辑';
+                    renderAll();
+                }
+                return;
+            }
+            if (action === 'add-dataset') {
+                dsState.datasets = dsState.datasets || [];
+                dsState.datasets.push({ name: `数据集${dsState.datasets.length + 1}`, vars: {} });
+                renderAll();
+                return;
+            }
+            const card = btn.closest('[data-ds-index]');
+            const dsIndex = card ? Number(card.getAttribute('data-ds-index')) : null;
+            if (dsIndex === null || Number.isNaN(dsIndex)) return;
+            if (action === 'remove-dataset') {
+                if ((dsState.datasets || []).length <= 1) return;
+                dsState.datasets.splice(dsIndex, 1);
+                renderAll();
+                return;
+            }
+            if (action === 'add-var') {
+                const ds = dsState.datasets[dsIndex];
+                const vars = ds.vars && typeof ds.vars === 'object' ? ds.vars : {};
+                let tmp = 1;
+                while (vars[`var${tmp}`] !== undefined) tmp += 1;
+                vars[`var${tmp}`] = '';
+                ds.vars = vars;
+                renderAll();
+                return;
+            }
+            if (action === 'remove-var') {
+                const ds = dsState.datasets[dsIndex];
+                const row = btn.closest('tr[data-var-key]');
+                const key = row ? String(row.getAttribute('data-var-key') || '') : '';
+                if (key) {
+                    delete ds.vars[key];
+                    renderAll();
+                }
+            }
+        });
+        box?.addEventListener('input', function(e) {
+            const card = e.target.closest('[data-ds-index]');
+            if (!card) return;
+            const dsIndex = Number(card.getAttribute('data-ds-index'));
+            if (Number.isNaN(dsIndex)) return;
+            const ds = dsState.datasets[dsIndex];
+            if (!ds) return;
+            const dsField = e.target.getAttribute('data-ds-field');
+            if (dsField === 'name') {
+                ds.name = String(e.target.value || '');
+                writeStateToRaw();
+                return;
+            }
+            const row = e.target.closest('tr[data-var-key]');
+            if (!row) return;
+            const field = e.target.getAttribute('data-var-field');
+            const oldKey = String(row.getAttribute('data-var-key') || '');
+            if (field === 'key') {
+                const newKey = String(e.target.value || '').trim();
+                if (!newKey) return;
+                ds.vars = (ds.vars && typeof ds.vars === 'object') ? ds.vars : {};
+                if (!oldKey) {
+                    if (ds.vars[newKey] !== undefined) return;
+                    const valEl = row.querySelector('textarea[data-var-field="val"], input[data-var-field="val"]');
+                    const v = valEl ? parseValueOrList(valEl.value) : '';
+                    ds.vars[newKey] = v;
+                    row.setAttribute('data-var-key', newKey);
+                    writeStateToRaw();
+                    return;
+                }
+                if (newKey !== oldKey) {
+                    if (ds.vars[newKey] !== undefined) return;
+                    const val = ds.vars[oldKey];
+                    delete ds.vars[oldKey];
+                    ds.vars[newKey] = val;
+                    row.setAttribute('data-var-key', newKey);
+                    writeStateToRaw();
+                    return;
+                }
+                return;
+            }
+            if (field === 'val') {
+                if (!oldKey) return;
+                ds.vars = (ds.vars && typeof ds.vars === 'object') ? ds.vars : {};
+                ds.vars[oldKey] = parseValueOrList(e.target.value);
+                writeStateToRaw();
+            }
+        });
+        rawField?.addEventListener('input', function() {
+            const obj = safeJsonParse(rawField.value);
+            if (!obj) return;
+            dsState = normalizeState(obj);
+            syncTopFieldsFromState();
+            if (rawWrap && rawWrap.style.display === 'none') {
+                renderAll();
+            }
+        });
+        setAdvancedVisible();
+    })();
+</script>
+
+<script>
+    (function() {
+        const formEl = document.querySelector('form');
+        const addBtn = document.getElementById('btn-add-step');
+        const tbody = document.getElementById('steps-tbody');
+        const tpl = document.getElementById('step-row-template');
+
+        function updateThumb(row, file) {
+            const link = row.querySelector('.guide-link');
+            const img = row.querySelector('.guide-thumb');
+            const rm = row.querySelector('.btn-guide-remove');
+            const dz = row.querySelector('.guide-dropzone');
+            if (!link || !img) return;
+            if (!file) {
+                link.style.display = 'none';
+                img.src = '';
+                link.href = '#';
+                if (rm && !row.dataset.hasGuideExisting) rm.style.display = 'none';
+                if (dz && !row.dataset.hasGuideExisting) dz.classList.remove('has-file');
+                return;
+            }
+            const url = URL.createObjectURL(file);
+            link.style.display = '';
+            link.href = url;
+            img.src = url;
+            if (rm) rm.style.display = '';
+            if (dz) dz.classList.add('has-file');
+        }
+
+        function bindRow(row) {
+            const input = row.querySelector('input[type="file"].guide-input');
+            const rm = row.querySelector('.btn-guide-remove');
+            let clear = row.querySelector('input[type="checkbox"].guide-clear');
+            if (!clear) {
+                const allInputs = row.querySelectorAll('input[type="hidden"]');
+                for (let inp of allInputs) {
+                    if (inp.name && inp.name.includes('guide_image_clear')) {
+                        clear = inp;
+                        break;
+                    }
+                }
+            }
+            const tfInput = row.querySelector('input[type="file"].transfer-file-input');
+            let tfClear = row.querySelector('input[type="checkbox"].transfer-file-clear');
+            if (!tfClear) {
+                const allInputs = row.querySelectorAll('input[type="hidden"]');
+                for (let inp of allInputs) {
+                    if (inp.name && inp.name.includes('transfer_file_clear')) {
+                        tfClear = inp;
+                        break;
+                    }
+                }
+            }
+            const tfRemove = row.querySelector('.btn-transfer-file-remove');
+            const tfName = row.querySelector('.transfer-file-name');
+            const delBtn = row.querySelector('.btn-step-remove');
+            const delChk = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+            const existing = row.querySelector('.guide-link')?.getAttribute('href') || '';
+            if (existing && existing !== '#') row.dataset.hasGuideExisting = '1';
+
+            try {
+                if (delChk && delChk.checked) {
+                    row.style.display = 'none';
+                }
+                delBtn?.addEventListener('click', function() {
+                    if (!confirm('确定要删除此步骤吗？')) return;
+                    if (delChk) {
+                        delChk.checked = true;
+                        row.style.display = 'none';
+                    } else {
+                        row.remove();
+                    }
+                });
+            } catch (e) {}
+
+            try {
+                tfInput?.addEventListener('change', function() {
+                    const file = (this.files && this.files[0]) ? this.files[0] : null;
+                    if (file) {
+                        if (tfClear) tfClear.checked = false;
+                        if (tfName) tfName.textContent = file.name || '已选择文件';
+                        if (tfRemove) tfRemove.style.display = '';
+                    } else {
+                        if (tfName && (!row.dataset.hasTransferExisting)) tfName.textContent = '未上传';
+                        if (tfRemove && (!row.dataset.hasTransferExisting)) tfRemove.style.display = 'none';
+                    }
+                });
+                tfRemove?.addEventListener('click', function() {
+                    if (tfInput) tfInput.value = '';
+                    if (tfClear) {
+                        if (tfClear.type === 'checkbox') {
+                            tfClear.checked = true;
+                        } else {
+                            tfClear.value = 'on';
+                        }
+                    }
+                    if (tfName) tfName.textContent = '未上传';
+                    tfRemove.style.display = 'none';
+                });
+                if (tfName && (tfName.textContent || '').trim() !== '未上传') {
+                    row.dataset.hasTransferExisting = '1';
+                    if (tfRemove) tfRemove.style.display = '';
+                }
+            } catch (e) {}
+            
+            // Handle paste on textareas (Description & Expected Result)
+            const textareas = row.querySelectorAll('textarea');
+            textareas.forEach(ta => {
+                ta.addEventListener('paste', function(e) {
+                    const items = e.clipboardData && e.clipboardData.items ? Array.from(e.clipboardData.items) : [];
+                    const imgItem = items.find((it) => (it.type || '').startsWith('image/'));
+                    if (imgItem && input) {
+                        e.preventDefault(); // Prevent pasting binary data into text field
+                        
+                        const blob = imgItem.getAsFile();
+                        if (!blob) return;
+
+                        // Create file with unique name
+                        const file = new File([blob], `paste_${Date.now()}.png`, { type: blob.type || 'image/png' });
+                        
+                        // Assign to input
+                        try {
+                            const dt = new DataTransfer();
+                            dt.items.add(file);
+                            input.files = dt.files;
+                            
+                            if (input.files.length > 0) {
+                                // Show a small tooltip or flash effect to indicate success
+                                const originalBg = ta.style.backgroundColor;
+                                ta.style.transition = 'background-color 0.2s';
+                                ta.style.backgroundColor = 'rgba(34,197,94,0.1)'; // Light green
+                                setTimeout(() => {
+                                    ta.style.backgroundColor = originalBg;
+                                }, 300);
+                            }
+                        } catch(err) {
+                            console.error(err);
+                        }
+
+                        if (clear) clear.checked = false;
+                        updateThumb(row, file);
+                    }
+                });
+            });
+
+            if (!input) return;
+            let dz = row.querySelector('.guide-dropzone');
+            if (!dz) {
+                dz = document.createElement('div');
+                dz.className = 'guide-dropzone';
+                dz.tabIndex = 0;
+                dz.innerHTML = '<div class="main">点击选择，或 Ctrl+V 粘贴截图</div><div class="hint">支持直接粘贴图片（不显示上传文件名）</div>';
+                const wrap = input.parentElement;
+                if (wrap) {
+                    wrap.classList.add('guide-upload-wrap');
+                    wrap.insertBefore(dz, input);
+                }
+            }
+            input.style.display = 'none';
+            dz.addEventListener('click', function() {
+                dz.focus();
+                input.click();
+            });
+            dz.addEventListener('paste', function(e) {
+                const items = e.clipboardData && e.clipboardData.items ? Array.from(e.clipboardData.items) : [];
+                const imgItem = items.find((it) => (it.type || '').startsWith('image/'));
+                if (!imgItem) return;
+                const blob = imgItem.getAsFile();
+                if (!blob) return;
+                
+                // Create file with unique name
+                const file = new File([blob], `paste_${Date.now()}.png`, { type: blob.type || 'image/png' });
+                
+                // Assign to input
+                try {
+                    const dt = new DataTransfer();
+                    dt.items.add(file);
+                    input.files = dt.files;
+                    // Verify assignment
+                    if (input.files.length === 0) {
+                        console.error("Failed to assign files to input");
+                        alert("浏览器不支持直接粘贴图片到隐藏文件域，请尝试点击上传");
+                    }
+                } catch(err) {
+                    console.error(err);
+                }
+
+                if (clear) clear.checked = false;
+                updateThumb(row, file);
+                e.preventDefault();
+                e.stopPropagation();
+            });
+            input.addEventListener('change', function() {
+                const file = (this.files && this.files[0]) ? this.files[0] : null;
+                if (clear && file) clear.checked = false;
+                updateThumb(row, file);
+            });
+            rm?.addEventListener('click', function() {
+                if (input) input.value = '';
+                if (clear) {
+                    if (clear.type === 'checkbox') {
+                        clear.checked = true;
+                    } else {
+                        clear.value = 'on';
+                    }
+                }
+                row.dataset.hasGuideExisting = row.dataset.hasGuideExisting ? row.dataset.hasGuideExisting : '';
+                const link = row.querySelector('.guide-link');
+                const img = row.querySelector('.guide-thumb');
+                const dz = row.querySelector('.guide-dropzone');
+                if (link) {
+                    link.style.display = 'none';
+                    link.href = '#';
+                }
+                if (img) img.src = '';
+                rm.style.display = 'none';
+                if (dz && !row.dataset.hasGuideExisting) dz.classList.remove('has-file');
+            });
+            try {
+                if (row.dataset.hasGuideExisting && dz) dz.classList.add('has-file');
+            } catch (e) {}
+        }
+
+        function initExisting() {
+            Array.from(document.querySelectorAll('#steps-tbody tr.step-row')).forEach(bindRow);
+        }
+
+        function renumberAfterReorder() {
+            const rows = Array.from(document.querySelectorAll('#steps-tbody tr.step-row'));
+            let idx = 0;
+            rows.forEach((row) => {
+                const delChk = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                if (delChk && delChk.checked) return;
+                if (row.style.display === 'none') return;
+                const num = row.querySelector('input[name$="-step_number"]');
+                if (!num) return;
+                idx += 1;
+                num.value = String(idx);
+            });
+        }
+
+        function rowHasMeaningfulData(row) {
+            const delChk = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+            if (delChk && delChk.checked) return false;
+            const desc = (row.querySelector('textarea[name$="-description"]')?.value || '').trim();
+            const expected = (row.querySelector('textarea[name$="-expected_result"]')?.value || '').trim();
+            const guideFiles = row.querySelector('input[type="file"].guide-input')?.files;
+            const transferFiles = row.querySelector('input[type="file"].transfer-file-input')?.files;
+            const hasGuide = (guideFiles && guideFiles.length > 0) || row.dataset.hasGuideExisting === '1';
+            const hasTransfer = (transferFiles && transferFiles.length > 0) || row.dataset.hasTransferExisting === '1';
+            return Boolean(desc || expected || hasGuide || hasTransfer);
+        }
+
+        function sanitizeEmptyRowsBeforeSubmit() {
+            const rows = Array.from(document.querySelectorAll('#steps-tbody tr.step-row'));
+            rows.forEach((row) => {
+                const delChk = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                if (delChk && delChk.checked) return;
+                const hasData = rowHasMeaningfulData(row);
+                if (hasData) return;
+                const idVal = (row.querySelector('input[name$="-id"]')?.value || '').trim();
+                if (idVal) return;
+                const num = row.querySelector('input[name$="-step_number"]');
+                if (num) num.value = '';
+            });
+        }
+
+        function autoFillStepNumbers() {
+            const rows = Array.from(document.querySelectorAll('#steps-tbody tr.step-row'));
+            const idInputs = Array.from(document.querySelectorAll('#steps-tbody input[name$="-id"]'));
+            const isCreateMode = !idInputs.some((x) => String(x?.value || '').trim() !== '');
+            if (!isCreateMode) return;
+            let idx = 0;
+            rows.forEach((row) => {
+                const delChk = row.querySelector('input[type="checkbox"][name$="-DELETE"]');
+                if (delChk && delChk.checked) return;
+                if (row.style.display === 'none') return;
+                const x = row.querySelector('input[name$="-step_number"]');
+                if (!x) return;
+                idx += 1;
+                x.value = String(idx);
+            });
+        }
+
+        function addRow() {
+            if (!tpl || !tbody) return;
+            // Use a more robust selector for TOTAL_FORMS that works with any prefix
+            const total = document.querySelector('input[name$="-TOTAL_FORMS"]');
+            if (!total) {
+                console.error("Could not find TOTAL_FORMS input");
+                return;
+            }
+            const idx = Number(total.value || '0');
+            const html = tpl.innerHTML.replaceAll('__prefix__', String(idx));
+            const holder = document.createElement('tbody');
+            holder.innerHTML = html.trim();
+            const row = holder.querySelector('tr');
+            if (!row) return;
+            tbody.appendChild(row);
+            total.value = String(idx + 1);
+            bindRow(row);
+            const num = row.querySelector('input[name$="-step_number"]');
+            if (num && !num.value) {
+                const nums = Array.from(document.querySelectorAll('#steps-tbody input[name$="-step_number"]'))
+                    .map((x) => Number(x.value || '0'))
+                    .filter((x) => Number.isFinite(x) && x >= 0);
+                const next = nums.length ? (Math.max(...nums) + 1) : 1;
+                num.value = String(next);
+            }
+            try { row.scrollIntoView({ block: 'end', inline: 'nearest' }); } catch (e) {}
+        }
+
+        addBtn?.addEventListener('click', addRow);
+        initExisting();
+        autoFillStepNumbers();
+        (function setupDragReorder() {
+            if (!tbody) return;
+            let draggingRow = null;
+            tbody.addEventListener('dragstart', function(e) {
+                const handle = e.target && e.target.closest ? e.target.closest('.step-drag-handle') : null;
+                if (!handle) return;
+                const row = handle.closest('tr.step-row');
+                if (!row || row.style.display === 'none') return;
+                draggingRow = row;
+                try {
+                    e.dataTransfer.effectAllowed = 'move';
+                    e.dataTransfer.setData('text/plain', 'step-row');
+                } catch (err) {}
+                row.classList.add('dragging');
+            });
+            tbody.addEventListener('dragend', function() {
+                if (draggingRow) draggingRow.classList.remove('dragging');
+                draggingRow = null;
+                renumberAfterReorder();
+            });
+            tbody.addEventListener('dragover', function(e) {
+                if (!draggingRow) return;
+                e.preventDefault();
+                const target = e.target && e.target.closest ? e.target.closest('tr.step-row') : null;
+                if (!target || target === draggingRow) return;
+                if (target.style.display === 'none') return;
+                const rect = target.getBoundingClientRect();
+                const after = (e.clientY - rect.top) > (rect.height / 2);
+                if (after) {
+                    target.after(draggingRow);
+                } else {
+                    target.before(draggingRow);
+                }
+            });
+            tbody.addEventListener('drop', function(e) {
+                if (!draggingRow) return;
+                e.preventDefault();
+                renumberAfterReorder();
+            });
+        })();
+        formEl?.addEventListener('submit', function() {
+            sanitizeEmptyRowsBeforeSubmit();
+        });
+    })();
+</script>
+{% endblock %}

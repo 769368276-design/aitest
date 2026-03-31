@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% load django_bootstrap5 %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ title }}</h1>
+        <div class="page-subtitle">选择 AI 执行用例，并配置定时规则</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'autotest_schedule_list' %}" class="btn btn-outline-secondary">返回列表</a>
+    </div>
+</div>
+
+<form method="post">
+    {% csrf_token %}
+    {% if form.non_field_errors %}
+        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-body">
+            <div class="row g-3">
+                <div class="col-md-6">{% bootstrap_field form.project %}</div>
+                <div class="col-md-6">{% bootstrap_field form.name %}</div>
+                <div class="col-md-4">
+                    {% bootstrap_field form.schedule_type %}
+                </div>
+                <div class="col-md-4" data-field="interval">
+                    {% bootstrap_field form.interval_minutes %}
+                </div>
+                <div class="col-md-4" data-field="daily">
+                    {% bootstrap_field form.daily_time %}
+                </div>
+                <div class="col-md-6" data-field="once">
+                    {% bootstrap_field form.run_at %}
+                </div>
+                <div class="col-12">
+                    <div class="form-check">
+                        {{ form.enabled }}
+                        <label class="form-check-label" for="{{ form.enabled.id_for_label }}">启用</label>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="fw-semibold">选择用例</div>
+            <div class="text-muted small">可多选</div>
+        </div>
+        <div class="card-body">
+            <label class="form-label">{{ form.cases.label }}</label>
+            {% if form.cases.errors %}
+                <div class="text-danger small mb-2">{{ form.cases.errors }}</div>
+            {% endif %}
+            <div class="border rounded p-2" style="max-height: 420px; overflow: auto;">
+                <div class="list-group list-group-flush">
+                    {% for cb in form.cases %}
+                        <label class="list-group-item d-flex gap-2 align-items-start">
+                            {{ cb.tag }}
+                            <span class="small">{{ cb.choice_label }}</span>
+                        </label>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="d-flex gap-2">
+        <button type="submit" class="btn btn-primary">保存</button>
+        <a href="{% url 'autotest_schedule_list' %}" class="btn btn-outline-secondary">取消</a>
+    </div>
+</form>
+
+<script>
+    (function() {
+        const typeEl = document.getElementById('id_schedule_type');
+        const setVisible = () => {
+            const t = (typeEl && typeEl.value) ? typeEl.value : 'interval';
+            document.querySelectorAll('[data-field="interval"]').forEach(el => el.style.display = (t === 'interval') ? '' : 'none');
+            document.querySelectorAll('[data-field="daily"]').forEach(el => el.style.display = (t === 'daily') ? '' : 'none');
+            document.querySelectorAll('[data-field="once"]').forEach(el => el.style.display = (t === 'once') ? '' : 'none');
+        };
+        typeEl && typeEl.addEventListener('change', setVisible);
+        setVisible();
+    })();
+</script>
+{% endblock %}

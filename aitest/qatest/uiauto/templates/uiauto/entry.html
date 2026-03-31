@@ -1,0 +1,115 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+        <h2 class="mb-0">UI 自动化</h2>
+        <div class="text-muted small">独立于 AI 测试入口的 UI 自动化执行</div>
+    </div>
+    <a href="/uiauto/reports/" class="btn btn-outline-secondary btn-sm">执行报告</a>
+</div>
+
+<form class="card card-body mb-3" method="get">
+    <div class="row g-2 align-items-end">
+        <div class="col-md-4">
+            <label class="form-label">项目</label>
+            <select class="form-select" name="project_id">
+                <option value="">全部项目</option>
+                {% for p in projects %}
+                <option value="{{ p.id }}" {% if project_id == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">关键词</label>
+            <input class="form-control" name="q" value="{{ q }}" placeholder="按用例标题搜索">
+        </div>
+        <div class="col-md-2 d-grid">
+            <button class="btn btn-primary" type="submit">筛选</button>
+        </div>
+    </div>
+</form>
+
+<form id="batchForm" class="table-responsive">
+    <table class="table table-hover align-middle">
+        <thead>
+            <tr>
+                <th style="width:40px;"><input type="checkbox" id="ckAll"></th>
+                <th>ID</th>
+                <th>用例标题</th>
+                <th>项目</th>
+                <th>创建人</th>
+                <th>状态</th>
+                <th class="text-end">操作</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for case in page_obj %}
+            <tr>
+                <td><input type="checkbox" name="case_ids" value="{{ case.id }}"></td>
+                <td>{{ case.id }}</td>
+                <td>{{ case.title }}</td>
+                <td>{{ case.project.name }}</td>
+                <td>{{ case.creator.username|default:"-" }}</td>
+                <td>{{ case.get_status_display }}</td>
+                <td class="text-end">
+                    <button type="button" class="btn btn-sm btn-outline-primary" onclick="runOne({{ case.id }})">执行</button>
+                </td>
+            </tr>
+            {% empty %}
+            <tr><td colspan="7" class="text-center text-muted py-4">暂无可执行用例</td></tr>
+            {% endfor %}
+        </tbody>
+    </table>
+    <div class="d-flex justify-content-between align-items-center">
+        <button type="button" class="btn btn-outline-primary btn-sm" onclick="batchRun()">批量执行</button>
+        {% include 'core/pagination.html' %}
+    </div>
+</form>
+
+<script>
+function getCookie(name) {
+    let cookieValue = null;
+    if (document.cookie && document.cookie !== '') {
+        const cookies = document.cookie.split(';');
+        for (let i = 0; i < cookies.length; i++) {
+            const cookie = cookies[i].trim();
+            if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                break;
+            }
+        }
+    }
+    return cookieValue;
+}
+document.getElementById('ckAll')?.addEventListener('change', function() {
+    document.querySelectorAll('input[name="case_ids"]').forEach(x => x.checked = this.checked);
+});
+async function runOne(caseId) {
+    const resp = await fetch(`/uiauto/run/${caseId}/`, { method: 'POST', headers: {'X-CSRFToken': getCookie('csrftoken')} });
+    const data = await resp.json();
+    if (!data.success) {
+        alert(data.error || '启动失败');
+        return;
+    }
+    window.open(`/uiauto/console/${data.execution_id}/`, '_blank');
+}
+async function batchRun() {
+    const form = document.getElementById('batchForm');
+    const fd = new FormData(form);
+    const ids = fd.getAll('case_ids');
+    if (!ids.length) {
+        alert('请先选择用例');
+        return;
+    }
+    const resp = await fetch('/uiauto/batch-run/', { method: 'POST', body: fd, headers: {'X-CSRFToken': getCookie('csrftoken')} });
+    const data = await resp.json();
+    if (!data.success) {
+        alert(data.error || '启动失败');
+        return;
+    }
+    window.location.href = '/uiauto/reports/';
+}
+</script>
+{% endblock %}
+

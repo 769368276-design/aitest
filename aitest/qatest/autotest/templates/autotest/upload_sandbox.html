@@ -1,0 +1,60 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1 class="page-title">上传控件沙盒</h1>
+    <div class="page-subtitle">用于验证自动上传选择与证据识别</div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body">
+    <div class="mb-3">
+      <div class="fw-semibold mb-1">隐藏 file input（应被忽略）</div>
+      <input id="hiddenFile" type="file" style="display:none">
+      <div class="text-muted small">此 input 仅用于制造干扰项</div>
+    </div>
+
+    <div class="mb-3">
+      <div class="fw-semibold mb-2">上传区域（应优先选择这里的 input）</div>
+      <div class="border rounded-3 p-3" style="position:relative;">
+        <div class="mb-2">Drag and Drop your file here</div>
+        <div class="small text-muted mb-2">Support format: .pptx, .pdf, .doc, .docx, .txt</div>
+
+        <label for="realFile" class="btn btn-primary btn-sm">Browse files</label>
+        <input id="realFile" type="file" style="position:absolute; left:-9999px; width:1px; height:1px;">
+
+        <div class="mt-3 small">
+          <span class="text-muted">当前选择：</span>
+          <span id="pickedName" class="fw-semibold">-</span>
+        </div>
+
+        <div class="mt-2">
+          <button id="fakeUploadBtn" class="btn btn-success btn-sm" type="button" disabled>模拟上传完成</button>
+        </div>
+
+        <div id="uploadToast" class="mt-2 small text-success" style="display:none;">上传成功</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const input = document.getElementById('realFile');
+    const name = document.getElementById('pickedName');
+    const btn = document.getElementById('fakeUploadBtn');
+    const toast = document.getElementById('uploadToast');
+    if (!input) return;
+    input.addEventListener('change', () => {
+      const f = (input.files && input.files[0]) ? input.files[0] : null;
+      name.textContent = f ? f.name : '-';
+      btn.disabled = !f;
+      toast.style.display = 'none';
+    });
+    btn.addEventListener('click', () => {
+      toast.style.display = 'block';
+    });
+  })();
+</script>
+{% endblock %}

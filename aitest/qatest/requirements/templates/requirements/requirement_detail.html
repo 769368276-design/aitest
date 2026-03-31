@@ -1,0 +1,28 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ requirement.title }}</h1>
+        <div class="page-subtitle">{{ requirement.get_status_display }} · {{ requirement.get_priority_display }} · {{ requirement.project.name }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'requirement_list' %}" class="btn btn-outline-secondary">返回列表</a>
+        <a href="{% url 'requirement_edit' requirement.pk %}" class="btn btn-primary"><i class="bi bi-pencil-square me-1"></i>编辑需求</a>
+        <form method="post" action="{% url 'requirement_delete' requirement.pk %}" onsubmit="return confirm('确认删除需求：{{ requirement.title }}？');">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash me-1"></i>删除</button>
+        </form>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-body">
+        <p class="card-text">{{ requirement.description }}</p>
+        <div class="text-muted small">
+            创建人: {{ requirement.creator.username }} <br>
+            创建时间: {{ requirement.created_at }} <br>
+            预计完成: {{ requirement.expected_finish_time|default:"-" }}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">{{ project.name }}</h1>
+        <div class="page-subtitle">{{ project.get_status_display }} · 负责人: {{ project.owner.username }}</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'project_list' %}" class="btn btn-outline-secondary">返回列表</a>
+        <a href="{% url 'project_edit' project.pk %}" class="btn btn-primary"><i class="bi bi-pencil-square me-1"></i>编辑项目</a>
+        <form method="post" action="{% url 'project_delete' project.pk %}" onsubmit="return confirm('确认删除项目：{{ project.name }}？删除将同时移除关联需求/用例等数据。');">
+            {% csrf_token %}
+            <button class="btn btn-outline-danger" type="submit"><i class="bi bi-trash me-1"></i>删除</button>
+        </form>
+    </div>
+</div>
+<div class="card mb-3">
+    <div class="card-body">
+        <p class="card-text">{{ project.description }}</p>
+        {% if project.base_url %}
+            <div class="mb-2">
+                <span class="text-muted small">项目URL：</span>
+                <a href="{{ project.base_url }}" target="_blank" class="text-decoration-none">{{ project.base_url }}</a>
+            </div>
+        {% endif %}
+        {% if project.test_accounts %}
+            <div class="mb-2">
+                <div class="text-muted small mb-1">测试账号</div>
+                <pre class="mono small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ project.test_accounts }}</pre>
+            </div>
+        {% endif %}
+        {% if project.history_requirements %}
+            <div class="mb-2">
+                <div class="text-muted small mb-1">历史需求</div>
+                <pre class="mono small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ project.history_requirements }}</pre>
+            </div>
+        {% endif %}
+        {% if project.knowledge_base %}
+            <div class="mb-2">
+                <div class="text-muted small mb-1">项目资料库</div>
+                <pre class="mono small mb-0" style="white-space: pre-wrap; word-break: break-word;">{{ project.knowledge_base }}</pre>
+            </div>
+        {% endif %}
+        <p class="card-text">
+            <small class="text-muted">开始时间: {{ project.start_time|default:"-" }}</small> <br>
+            <small class="text-muted">结束时间: {{ project.end_time|default:"-" }}</small>
+        </p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-md-3">
+        <div class="list-group">
+            <a href="#" class="list-group-item list-group-item-action active">概览</a>
+            <a href="#" class="list-group-item list-group-item-action">需求 ({{ project.requirements.count }})</a>
+            <a href="#" class="list-group-item list-group-item-action">用例 ({{ project.testcases.count }})</a>
+            <a href="#" class="list-group-item list-group-item-action">缺陷 ({{ project.bugs.count }})</a>
+            <a href="#" class="list-group-item list-group-item-action">成员 ({{ project.members.count }})</a>
+        </div>
+    </div>
+    <div class="col-md-9">
+        <div class="h5 mb-3 fw-semibold">项目统计</div>
+        <div class="row">
+             <div class="col-md-4">
+                <div class="card">
+                    <div class="card-body">
+                        <h5>需求完成率</h5>
+                        <p>0%</p>
+                    </div>
+                </div>
+             </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

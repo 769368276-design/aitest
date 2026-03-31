@@ -1,0 +1,87 @@
+{% load django_bootstrap5 %}
+{% load static %}
+<!DOCTYPE html>
+<html lang="zh-hans" data-bs-theme="light">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}用例管理平台{% endblock %}</title>
+    <link href="https://fonts.googleapis.com/css?family=Nunito:200,200i,300,300i,400,400i,600,600i,700,700i,800,800i,900,900i" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+    {% bootstrap_css %}
+    <link rel="stylesheet" href="{% static 'css/style.css' %}?v=20260127">
+    {% bootstrap_javascript %}
+</head>
+<body class="app-body">
+    <nav class="navbar navbar-expand-lg sticky-top mb-3 app-nav">
+        <div class="container-xl">
+            <a class="navbar-brand" href="/">
+                <span class="brand-mark"><i class="bi bi-stars"></i></span>
+                <span class="brand-text">QA Platform</span>
+            </a>
+            <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#navbarNav">
+                <span class="navbar-toggler-icon"></span>
+            </button>
+            <div class="collapse navbar-collapse" id="navbarNav">
+                <ul class="navbar-nav me-auto">
+                    <li class="nav-item"><a class="nav-link" href="/">工作台</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/projects/">项目管理</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/requirements/">需求管理</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/testcases/">用例管理</a></li>
+                    <li class="nav-item"><a class="nav-link nav-feature nav-feature-ai-generate" href="/ai/">AI生成</a></li>
+                    <li class="nav-item"><a class="nav-link nav-feature nav-feature-ai-test" href="/autotest/ai-direct/">AI测试</a></li>
+                    <li class="nav-item"><a class="nav-link nav-feature nav-feature-report" href="/autotest/reports/">测试报告</a></li>
+                    <li class="nav-item"><a class="nav-link" href="/bugs/">缺陷列表</a></li>
+                    <li class="nav-item">
+                        <a class="nav-link d-inline-flex align-items-center gap-2" href="/autotest/record/">
+                            <span>录制</span>
+                            <span class="badge beta-badge">Beta</span>
+                        </a>
+                    </li>
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown" aria-expanded="false">配置中心</a>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="/autotest/schedules/">定时任务</a></li>
+                            <li><a class="dropdown-item" href="/autotest/cicd/">CI/CD</a></li>
+                        </ul>
+                    </li>
+                </ul>
+                <ul class="navbar-nav">
+                    {% if user.is_authenticated %}
+                    <li class="nav-item dropdown">
+                        <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                            {{ user.username }} ({{ user.role.name|default:"User" }})
+                        </a>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li><a class="dropdown-item" href="/users/groups/">我的用户组</a></li>
+                            <li><a class="dropdown-item" href="/users/profile/">个人中心</a></li>
+                            <li><a class="dropdown-item" href="/diagnostics/">系统自检</a></li>
+                            {% if user.is_staff or user.is_superuser or user.role.name|default:'' == 'System Admin' %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li><h6 class="dropdown-header">系统管理</h6></li>
+                            <li><a class="dropdown-item" href="/users/manage/">用户管理</a></li>
+                            <li><a class="dropdown-item" href="/users/roles/">角色与权限</a></li>
+                            <li><a class="dropdown-item" href="/admin/">后台管理</a></li>
+                            {% endif %}
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form action="{% url 'logout' %}" method="post">
+                                    {% csrf_token %}
+                                    <button class="dropdown-item" type="submit">退出登录</button>
+                                </form>
+                            </li>
+                        </ul>
+                    </li>
+                    {% else %}
+                    <li class="nav-item"><a class="nav-link" href="{% url 'login' %}">登录</a></li>
+                    {% endif %}
+                </ul>
+            </div>
+        </div>
+    </nav>
+    <div class="{% block container_class %}container-xl pb-5{% endblock %}">
+        {% bootstrap_messages %}
+        {% block content %}{% endblock %}
+    </div>
+</body>
+</html>

@@ -1,0 +1,62 @@
+{% extends "base.html" %}
+
+{% block title %}角色管理{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">角色与权限管理</h1>
+        <div class="page-subtitle">管理系统角色（用户组）及其对应的操作权限</div>
+    </div>
+    <div>
+        <a href="{% url 'role_create' %}" class="btn btn-primary">
+            <i class="bi bi-plus-lg"></i> 新建角色
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">角色名称</th>
+                        <th>包含权限数</th>
+                        <th>用户数</th>
+                        <th class="text-end pe-4">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for role in roles %}
+                    <tr>
+                        <td class="ps-4 fw-bold">{{ role.name }}</td>
+                        <td>
+                            <span class="badge bg-secondary">{{ role.permissions.count }}</span>
+                        </td>
+                        <td>
+                            <span class="badge bg-info text-dark">{{ role.user_set.count }}</span>
+                        </td>
+                        <td class="text-end pe-4">
+                            <a href="{% url 'role_edit' role.id %}" class="btn btn-sm btn-outline-primary me-1">编辑</a>
+                            {% if role.name != "System Admin" %}
+                            <form action="{% url 'role_delete' role.id %}" method="post" class="d-inline" onsubmit="return confirm('确定要删除此角色吗？');">
+                                {% csrf_token %}
+                                <button type="submit" class="btn btn-sm btn-outline-danger">删除</button>
+                            </form>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr>
+                        <td colspan="4" class="text-center py-5 text-muted">暂无角色数据</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% include 'core/pagination.html' %}
+{% endblock %}

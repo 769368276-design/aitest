@@ -1,0 +1,179 @@
+{% extends 'base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}用户管理{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">用户管理</h1>
+        <div class="page-subtitle">系统用户账号、角色分配与状态管理</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'role_list' %}" class="btn btn-outline-primary">
+            <i class="bi bi-shield-lock"></i> 角色与权限
+        </a>
+        <button class="btn btn-primary" type="button" data-bs-toggle="modal" data-bs-target="#createUserModal">
+            <i class="bi bi-person-plus"></i> 新建用户
+        </button>
+    </div>
+</div>
+
+<div class="modal fade" id="createUserModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">新建用户</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <form method="post" autocomplete="off" id="create-user-form">
+                {% csrf_token %}
+                <div class="modal-body">
+                    {% if form.non_field_errors %}
+                        <div class="alert alert-danger">{{ form.non_field_errors }}</div>
+                    {% endif %}
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            {{ form.username.label_tag }}
+                            {{ form.username }}
+                            {% if form.username.errors %}<div class="text-danger small">{{ form.username.errors|striptags }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.role.label_tag }}
+                            {{ form.role }}
+                            {% if form.role.errors %}<div class="text-danger small">{{ form.role.errors|striptags }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.password1.label_tag }}
+                            {{ form.password1 }}
+                            {% if form.password1.errors %}<div class="text-danger small">{{ form.password1.errors|striptags }}</div>{% endif %}
+                        </div>
+                        <div class="col-md-6">
+                            {{ form.password2.label_tag }}
+                            {{ form.password2 }}
+                            {% if form.password2.errors %}<div class="text-danger small">{{ form.password2.errors|striptags }}</div>{% endif %}
+                        </div>
+                        <div class="col-12">
+                            <div class="form-check">
+                                {{ form.is_staff }}
+                                <label class="form-check-label" for="{{ form.is_staff.id_for_label }}">设为管理员</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                    <button class="btn btn-primary px-4" type="submit">保存</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="d-flex justify-content-between align-items-center p-3 border-bottom">
+            <h5 class="card-title mb-0">用户列表</h5>
+            <form class="d-flex gap-2" method="get">
+                <div class="input-group">
+                    <span class="input-group-text bg-white"><i class="bi bi-search"></i></span>
+                    <input class="form-control border-start-0 ps-0" name="keyword" value="{{ keyword|default:'' }}" placeholder="搜索用户名...">
+                </div>
+                <button class="btn btn-outline-secondary" type="submit">查询</button>
+            </form>
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th class="ps-4">用户</th>
+                        <th>系统角色</th>
+                        <th>状态</th>
+                        <th>加入时间</th>
+                        <th class="text-end pe-4">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for u in users %}
+                    <tr>
+                        <td class="ps-4">
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="avatar-circle bg-primary text-white rounded-circle d-flex align-items-center justify-content-center" style="width:32px;height:32px;font-weight:bold;font-size:14px;">
+                                    {{ u.username|first|upper }}
+                                </div>
+                                <div>
+                                    <div class="fw-bold">{{ u.username }}</div>
+                                    <div class="text-muted small">ID: {{ u.id }}</div>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if u.role %}
+                                <span class="badge bg-secondary">{{ u.role.name }}</span>
+                            {% else %}
+                                <span class="text-muted small">未分配</span>
+                            {% endif %}
+                            {% if u.is_staff or u.is_superuser %}
+                                <i class="bi bi-shield-fill text-primary ms-1" title="管理员权限"></i>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if u.is_active %}
+                                <span class="badge bg-success">启用</span>
+                            {% else %}
+                                <span class="badge bg-danger">禁用</span>
+                            {% endif %}
+                        </td>
+                        <td class="text-muted small">{{ u.date_joined|date:"Y-m-d H:i" }}</td>
+                        <td class="text-end pe-4">
+                            <div class="btn-group">
+                                <a class="btn btn-sm btn-outline-secondary" href="/users/manage/{{ u.id }}/edit/">编辑</a>
+                                <button type="button" class="btn btn-sm btn-outline-secondary dropdown-toggle dropdown-toggle-split" data-bs-toggle="dropdown"></button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="/users/manage/{{ u.id }}/password/">重置密码</a></li>
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li>
+                                        <form method="post" action="/users/manage/{{ u.id }}/delete/" onsubmit="return confirm('确定删除该用户？');">
+                                            {% csrf_token %}
+                                            <button class="dropdown-item text-danger" type="submit">删除用户</button>
+                                        </form>
+                                    </li>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="5" class="text-center py-5 text-muted">未找到匹配的用户</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+{% include 'core/pagination.html' %}
+<script>
+    (function() {
+        const modalEl = document.getElementById('createUserModal');
+        if (!modalEl || !window.bootstrap) return;
+        const modal = new bootstrap.Modal(modalEl);
+        const formEl = document.getElementById('create-user-form');
+        const hasErrors = {{ form.errors|yesno:"true,false" }};
+
+        if (hasErrors) {
+            try { modal.show(); } catch (e) {}
+        }
+
+        modalEl.addEventListener('show.bs.modal', function() {
+            if (!formEl) return;
+            if (hasErrors) return;
+            try { formEl.reset(); } catch (e) {}
+            try {
+                formEl.querySelectorAll('input[type="text"], input[type="password"]').forEach((el) => el.value = '');
+                formEl.querySelectorAll('select').forEach((el) => el.selectedIndex = 0);
+                formEl.querySelectorAll('input[type="checkbox"]').forEach((el) => el.checked = false);
+            } catch (e) {}
+        });
+    })();
+</script>
+{% endblock %}

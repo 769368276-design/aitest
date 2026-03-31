@@ -1,0 +1,103 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">CI/CD 集成</h1>
+        <div class="page-subtitle">傻瓜式生成触发命令与 GitHub Actions 配置</div>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header fw-semibold">第 1 步：生成 Token</div>
+            <div class="card-body">
+                <div class="text-muted small mb-2">Token 用于 CI 调用接口鉴权；页面不会长期展示明文 Token。</div>
+                {% if cred %}
+                    <div class="mb-2">
+                        <span class="badge bg-success">已配置</span>
+                        <span class="text-muted small ms-2">Token：{{ token_hint }}</span>
+                        {% if cred.last_used_at %}
+                            <div class="text-muted small mt-1">最近使用：{{ cred.last_used_at|date:"Y-m-d H:i:s" }}</div>
+                        {% endif %}
+                    </div>
+                {% else %}
+                    <div class="mb-2"><span class="badge bg-warning text-dark">未配置</span></div>
+                {% endif %}
+
+                <form method="post" action="{% url 'cicd_token_rotate' %}">
+                    {% csrf_token %}
+                    <button class="btn btn-outline-primary" type="submit">{% if cred %}重置 Token{% else %}生成 Token{% endif %}</button>
+                </form>
+
+                {% if request.session.cicd_last_token_plain %}
+                    <div class="alert alert-warning mt-3 mb-0">
+                        <div class="fw-semibold">请立即复制保存（刷新/退出后不可再查看）</div>
+                        <div class="mt-2">
+                            <code style="user-select: all;">{{ request.session.cicd_last_token_plain }}</code>
+                        </div>
+                        <div class="text-muted small mt-2">在 GitHub Actions 里添加 Secret：QA_CI_TOKEN</div>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header fw-semibold">第 2 步：选择触发对象</div>
+            <div class="card-body">
+                <form method="get" class="row g-3">
+                    <div class="col-12">
+                        <label class="form-label">按计划任务触发（推荐）</label>
+                        <select class="form-select" name="schedule_id">
+                            <option value="0">不选择</option>
+                            {% for s in schedules %}
+                                <option value="{{ s.id }}" {% if selected_schedule_id == s.id %}selected{% endif %}>
+                                    #{{ s.id }} {{ s.name }}
+                                </option>
+                            {% endfor %}
+                        </select>
+                        <div class="text-muted small mt-1">选择后会用 schedule_id 触发，并自动使用该任务绑定的用例集合。</div>
+                    </div>
+                    <div class="col-12">
+                        <label class="form-label">或按用例ID触发（逗号分隔）</label>
+                        <input class="form-control" name="case_ids" placeholder="例如：12,15,18" value="{% if selected_case_ids %}{{ selected_case_ids|join:',' }}{% endif %}">
+                        <div class="text-muted small mt-1">不选 schedule 时才会使用 case_ids。</div>
+                    </div>
+                    <div class="col-12">
+                        <button class="btn btn-primary" type="submit">生成配置</button>
+                    </div>
+                </form>
+                <div class="mt-3 text-muted small">接口地址：{{ trigger_url }}</div>
+                <div class="text-muted small">状态查询：{{ status_url }}</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header fw-semibold">第 3 步：复制集成配置</div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-lg-6">
+                        <div class="fw-semibold mb-2">curl 触发示例</div>
+                        <pre class="border rounded p-2 mb-0" style="white-space:pre-wrap;">{{ curl_snippet }}</pre>
+                        <div class="text-muted small mt-2">把 QA_CI_TOKEN 作为环境变量/secret 注入即可。</div>
+                    </div>
+                    <div class="col-lg-6">
+                        <div class="fw-semibold mb-2">GitHub Actions 示例</div>
+                        <pre class="border rounded p-2 mb-0" style="white-space:pre-wrap;">{{ gha_snippet }}</pre>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-3 mb-0">
+                    <div class="fw-semibold">轮询状态（可选）</div>
+                    <div class="text-muted small mt-1">触发后接口会返回 execution_ids；你可以用 /autotest/ci/status/&lt;id&gt; 查询状态并决定流水线是否失败。</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

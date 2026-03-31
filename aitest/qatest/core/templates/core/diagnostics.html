@@ -1,0 +1,159 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">系统自检</h1>
+        <div class="page-subtitle">一键排查 AI Key、浏览器、截图与 media 静态服务问题</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a class="btn btn-outline-secondary" href="/users/profile/">去个人中心配置 Key</a>
+    </div>
+</div>
+
+<div class="row g-3">
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header fw-semibold">AI Key 状态</div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead>
+                            <tr>
+                                <th>用途</th>
+                                <th>状态</th>
+                                <th>Provider</th>
+                                <th>Model</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for k,v in ai.items %}
+                            <tr>
+                                <td class="text-muted">{{ k }}</td>
+                                <td>
+                                    {% if v.ok %}
+                                        <span class="badge bg-success">OK</span>
+                                    {% else %}
+                                        <span class="badge bg-danger">未就绪</span>
+                                        <div class="small text-muted mt-1">{{ v.error }}</div>
+                                    {% endif %}
+                                </td>
+                                <td class="text-muted small">{{ v.provider|default:"-" }}</td>
+                                <td class="text-muted small">{{ v.model|default:"-" }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="text-muted small mt-3">AI 生成与 AI 测试均需要 Key；不会在此页面展示明文 Key。</div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-6">
+        <div class="card">
+            <div class="card-header fw-semibold">浏览器与执行环境</div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-12">
+                        <div class="small text-muted">AI_EXEC_HEADLESS</div>
+                        <div class="fw-semibold">{{ browser.ai_exec_headless }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted">AI_EXEC_CHROME_PATH</div>
+                        <div class="text-muted small">{{ browser.ai_exec_chrome_path|default:"(未设置)" }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted">PLAYWRIGHT_BROWSERS_PATH</div>
+                        <div class="text-muted small">{{ browser.playwright_browsers_path|default:"(未设置)" }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted">Playwright 依赖</div>
+                        {% if browser.playwright_ok %}
+                            <div><span class="badge bg-success">已安装</span></div>
+                        {% else %}
+                            <div><span class="badge bg-danger">不可用</span></div>
+                            <div class="text-muted small mt-1">{{ browser.playwright_probe_error }}</div>
+                        {% endif %}
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted">Chromium executable_path</div>
+                        <div class="text-muted small">{{ browser.chromium_executable_path|default:"-" }}</div>
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-3">
+                    <form method="post" action="{% url 'diagnostics_browser_check' %}">
+                        {% csrf_token %}
+                        <button class="btn btn-outline-primary" type="submit">浏览器启动自检</button>
+                    </form>
+                </div>
+
+                {% if last_browser_check %}
+                <div class="mt-3">
+                    <div class="small text-muted">最近一次自检结果</div>
+                    {% if last_browser_check.ok %}
+                        <div class="text-success fw-semibold">OK（{{ last_browser_check.elapsed_ms }}ms）</div>
+                    {% else %}
+                        <div class="text-danger fw-semibold">失败（{{ last_browser_check.elapsed_ms }}ms）</div>
+                        <div class="text-muted small mt-1" style="white-space:pre-wrap;">{{ last_browser_check.detail }}</div>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card">
+            <div class="card-header fw-semibold">截图与 media 静态服务</div>
+            <div class="card-body">
+                <div class="row g-2">
+                    <div class="col-md-4">
+                        <div class="small text-muted">DEBUG</div>
+                        <div class="fw-semibold">{{ media.debug }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="small text-muted">DJANGO_SERVE_MEDIA</div>
+                        <div class="fw-semibold">{{ media.serve_media }}</div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="small text-muted">MEDIA_URL</div>
+                        <div class="text-muted small">{{ media.media_url }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted">MEDIA_ROOT</div>
+                        <div class="text-muted small">{{ media.media_root }}</div>
+                    </div>
+                    <div class="col-12">
+                        <div class="small text-muted">数据库迁移</div>
+                        {% if migrations.pending == False %}
+                            <div><span class="badge bg-success">已最新</span></div>
+                        {% elif migrations.pending == True %}
+                            <div><span class="badge bg-warning text-dark">有未执行迁移</span></div>
+                            <div class="text-muted small mt-1">请执行：python manage.py migrate</div>
+                        {% else %}
+                            <div><span class="badge bg-secondary">未知</span></div>
+                            <div class="text-muted small mt-1">{{ migrations.error }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+
+                <div class="d-flex gap-2 mt-3">
+                    <form method="post" action="{% url 'diagnostics_media_check' %}">
+                        {% csrf_token %}
+                        <button class="btn btn-outline-primary" type="submit">生成 media 测试图</button>
+                    </form>
+                    {% if last_media_url %}
+                        <a class="btn btn-outline-secondary" href="{{ last_media_url }}" target="_blank">打开测试图</a>
+                    {% endif %}
+                </div>
+
+                {% if last_media_url %}
+                <div class="text-muted small mt-2">如果“打开测试图”是 404，请在生产环境配置 /media/ 静态映射，或仅内网设置 DJANGO_SERVE_MEDIA=true。</div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,903 @@
+{% extends 'base.html' %}
+{% load django_bootstrap5 %}
+
+{% block title %}AI 用例生成 - QA Platform{% endblock %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">AI 智能用例生成</h1>
+        <div class="page-subtitle">上传需求文档、原型图或 API 文档，AI 将自动生成测试用例</div>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Input Form -->
+    <div class="col-md-5">
+        <div class="card mb-3">
+            <div class="card-header">输入信息</div>
+            <div class="card-body">
+                <form id="ai-form" enctype="multipart/form-data">
+                    <div class="mb-3">
+                        <label for="project" class="form-label">所属项目</label>
+                        <select class="form-select" id="project" name="project" required>
+                            <option value="">请选择项目...</option>
+                            {% for p in projects %}
+                            <option value="{{ p.id }}">{{ p.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="requirement" class="form-label">关联需求 (可选)</label>
+                        <select class="form-select" id="requirement" name="requirement">
+                            <option value="">请选择需求...</option>
+                            {% for r in requirements %}
+                            <option value="{{ r.id }}" data-project="{{ r.project.id }}">{{ r.title }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="file" class="form-label">上传文件</label>
+                        <div id="file-dropzone" class="file-dropzone" tabindex="0">
+                            <div class="d-flex align-items-center justify-content-between gap-2">
+                                <div class="file-dropzone-text">
+                                    <div class="fw-semibold">拖拽文件到此处，或点击上传文件</div>
+                                    <div class="small text-muted">支持 Ctrl+V 粘贴截图（图片会自动作为上传文件）</div>
+                                </div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="btn-file-choose">
+                                    <i class="bi bi-upload me-1"></i>上传文件
+                                </button>
+                            </div>
+                            <div id="file-selected" class="small mt-2 text-muted">未选择文件</div>
+                        </div>
+                        <input type="file" class="form-control mt-2 d-none" id="file" name="file" required accept=".png,.jpg,.jpeg,.pdf,.json,.yaml,.yml,.txt">
+                        <div class="form-text">支持图片、PDF、OpenAPI (JSON/YAML) 或文本文件。</div>
+                    </div>
+                    <div class="mb-3">
+                        <label for="requirements_text" class="form-label">需求描述</label>
+                        <textarea class="form-control" id="requirements_text" name="requirements" rows="3" placeholder="简要描述测试需求..."></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label for="context" class="form-label">上下文信息 (可选)</label>
+                        <textarea class="form-control" id="context" name="context" rows="2" placeholder="补充业务背景或其他信息..."></textarea>
+                    </div>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary flex-fill" id="generate-btn">
+                            <i class="bi bi-stars"></i> 开始生成
+                        </button>
+                        <button type="button" class="btn btn-outline-danger" id="stop-btn" disabled>
+                            <i class="bi bi-stop-circle"></i> 停止
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Output Area -->
+    <div class="col-md-7">
+        <div class="card mb-3 h-100">
+            <div class="card-header d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">生成结果</div>
+                <div>
+                    <button class="btn btn-sm btn-outline-success me-2" onclick="importTestCases()" id="import-btn" disabled>
+                        <i class="bi bi-box-arrow-in-down"></i> 一键导入用例库
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary me-2" onclick="exportTestCases('excel')" id="export-excel-btn" disabled>
+                        导出 Excel
+                    </button>
+                    <button class="btn btn-sm btn-outline-primary me-2" onclick="exportTestCases('xmind')" id="export-xmind-btn" disabled>
+                        导出 XMind
+                    </button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="copyToClipboard()" id="copy-btn" disabled>
+                        <i class="bi bi-clipboard"></i> 复制
+                    </button>
+                    <button class="btn btn-sm btn-outline-danger ms-2" onclick="clearGenerated()" id="clear-btn" disabled>
+                        <i class="bi bi-trash3"></i> 清空
+                    </button>
+                </div>
+            </div>
+            <div class="card-body">
+                <div id="loading" class="text-center py-5 d-none">
+                    <div class="spinner-border text-primary" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                    <p class="mt-2 text-muted">AI 正在思考中...</p>
+                </div>
+                <div class="row g-3">
+                    <div class="col-12 col-md-4">
+                        <div class="d-flex gap-2 mb-2">
+                            <input id="case-search" class="form-control form-control-sm" placeholder="搜索用例标题">
+                        </div>
+                        <div id="case-list" class="case-list">
+                            <div class="text-muted small">生成后将显示用例列表</div>
+                        </div>
+                    </div>
+                    <div class="col-12 col-md-8">
+                        <div class="d-flex align-items-center justify-content-between mb-2">
+                            <div class="btn-group btn-group-sm" role="group" aria-label="view tabs">
+                                <button type="button" class="btn btn-outline-secondary active" id="tab-preview">预览</button>
+                                <button type="button" class="btn btn-outline-secondary" id="tab-mindmap">脑图</button>
+                                <button type="button" class="btn btn-outline-secondary" id="tab-raw">原文</button>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mindmap-toolbar d-none" id="mindmap-toolbar">
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-zoom-out">-</button>
+                                <div class="small text-muted" id="mm-zoom-label">100%</div>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-zoom-in">+</button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" id="mm-reset">重置</button>
+                            </div>
+                        </div>
+                        <div id="result-preview" class="markdown-body result-pane">
+                            <p class="text-muted text-center py-5">请在左侧上传文件并开始生成。</p>
+                        </div>
+                        <div id="result-mindmap" class="result-pane d-none">
+                            <div id="mindmap-canvas" class="mindmap-canvas">
+                                <div class="text-muted text-center py-5">生成后将显示用例脑图</div>
+                            </div>
+                        </div>
+                        <pre id="result-raw" class="result-pane d-none"></pre>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<script>
+    // Project/Requirement dependency
+    const allRequirements = Array.from(document.querySelectorAll('#requirement option'));
+    document.getElementById('project').addEventListener('change', function() {
+        const projectId = this.value;
+        const reqSelect = document.getElementById('requirement');
+        reqSelect.innerHTML = '<option value="">请选择需求...</option>';
+        
+        allRequirements.forEach(option => {
+            if (!option.value || option.dataset.project === projectId) {
+                reqSelect.appendChild(option.cloneNode(true));
+            }
+        });
+    });
+
+    (function() {
+        const dz = document.getElementById('file-dropzone');
+        const fileInput = document.getElementById('file');
+        const selected = document.getElementById('file-selected');
+        const chooseBtn = document.getElementById('btn-file-choose');
+        if (!dz || !fileInput || !selected) return;
+
+        function setSelectedText() {
+            const f = fileInput.files && fileInput.files[0] ? fileInput.files[0] : null;
+            if (!f) {
+                selected.textContent = '未选择文件';
+                return;
+            }
+            selected.textContent = `已选择：${f.name}（${Math.round((f.size || 0) / 1024)} KB）`;
+        }
+
+        function setFile(file) {
+            const dt = new DataTransfer();
+            dt.items.add(file);
+            fileInput.files = dt.files;
+            setSelectedText();
+        }
+
+        function prevent(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        if (chooseBtn) chooseBtn.addEventListener('click', function() {
+            dz.focus();
+            fileInput.click();
+        });
+
+        ['dragenter', 'dragover'].forEach((evt) => {
+            dz.addEventListener(evt, function(e) {
+                prevent(e);
+                dz.classList.add('is-dragover');
+            });
+        });
+        ['dragleave', 'drop'].forEach((evt) => {
+            dz.addEventListener(evt, function(e) {
+                prevent(e);
+                dz.classList.remove('is-dragover');
+            });
+        });
+
+        dz.addEventListener('drop', function(e) {
+            const files = e.dataTransfer && e.dataTransfer.files ? Array.from(e.dataTransfer.files) : [];
+            if (!files.length) return;
+            setFile(files[0]);
+        });
+
+        dz.addEventListener('paste', function(e) {
+            const items = e.clipboardData && e.clipboardData.items ? Array.from(e.clipboardData.items) : [];
+            const imgItem = items.find((it) => (it.type || '').startsWith('image/'));
+            if (!imgItem) return;
+            const blob = imgItem.getAsFile();
+            if (!blob) return;
+            const file = new File([blob], `paste_${Date.now()}.png`, { type: blob.type || 'image/png' });
+            setFile(file);
+            prevent(e);
+        });
+
+        fileInput.addEventListener('change', setSelectedText);
+        setSelectedText();
+    })();
+
+    function showTab(tab) {
+        const btnPreview = document.getElementById('tab-preview');
+        const btnMindmap = document.getElementById('tab-mindmap');
+        const btnRaw = document.getElementById('tab-raw');
+        const panePreview = document.getElementById('result-preview');
+        const paneMindmap = document.getElementById('result-mindmap');
+        const paneRaw = document.getElementById('result-raw');
+        const toolbar = document.getElementById('mindmap-toolbar');
+        if (tab === 'raw') {
+            btnPreview.classList.remove('active');
+            btnMindmap.classList.remove('active');
+            btnRaw.classList.add('active');
+            panePreview.classList.add('d-none');
+            paneMindmap.classList.add('d-none');
+            paneRaw.classList.remove('d-none');
+            toolbar.classList.add('d-none');
+        } else if (tab === 'mindmap') {
+            btnPreview.classList.remove('active');
+            btnRaw.classList.remove('active');
+            btnMindmap.classList.add('active');
+            panePreview.classList.add('d-none');
+            paneRaw.classList.add('d-none');
+            paneMindmap.classList.remove('d-none');
+            toolbar.classList.remove('d-none');
+        } else {
+            btnRaw.classList.remove('active');
+            btnMindmap.classList.remove('active');
+            btnPreview.classList.add('active');
+            paneRaw.classList.add('d-none');
+            paneMindmap.classList.add('d-none');
+            panePreview.classList.remove('d-none');
+            toolbar.classList.add('d-none');
+        }
+    }
+
+    document.getElementById('tab-preview').addEventListener('click', () => showTab('preview'));
+    document.getElementById('tab-mindmap').addEventListener('click', () => showTab('mindmap'));
+    document.getElementById('tab-raw').addEventListener('click', () => showTab('raw'));
+
+    function escapeHtml(s) {
+        return String(s || '').replace(/[&<>"']/g, (c) => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    function renderCaseList(cases) {
+        const list = document.getElementById('case-list');
+        list.innerHTML = '';
+        if (!cases || cases.length === 0) {
+            list.innerHTML = '<div class="text-muted small">未解析到用例标题</div>';
+            return;
+        }
+        cases.forEach((c, idx) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'case-list-item';
+            btn.dataset.idx = String(idx);
+            btn.textContent = c.title || '';
+            btn.addEventListener('click', function() {
+                document.querySelectorAll('.case-list-item.active').forEach(el => el.classList.remove('active'));
+                btn.classList.add('active');
+                showTab('preview');
+                jumpToCaseTitle(c.title || '');
+            });
+            list.appendChild(btn);
+        });
+    }
+
+    function jumpToCaseTitle(title) {
+        if (!title) return;
+        const pane = document.getElementById('result-preview');
+        const needles = [title.trim()];
+        const m = title.match(/^(TC-[^:：]+)\s*[:：]/i);
+        if (m && m[1]) needles.unshift(m[1].trim());
+        const headings = pane.querySelectorAll('h1,h2,h3,h4,h5,h6');
+        let target = null;
+        headings.forEach(h => {
+            const t = (h.textContent || '').trim();
+            if (target) return;
+            if (needles.some(n => n && t.includes(n))) target = h;
+        });
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }
+    }
+
+    function filterCaseList(keyword) {
+        const kw = (keyword || '').trim().toLowerCase();
+        document.querySelectorAll('#case-list .case-list-item').forEach(btn => {
+            const t = (btn.textContent || '').toLowerCase();
+            btn.classList.toggle('d-none', kw && !t.includes(kw));
+        });
+    }
+
+    document.getElementById('case-search').addEventListener('input', function() {
+        filterCaseList(this.value);
+    });
+
+    let mindmapScale = 1;
+    function setMindmapScale(scale) {
+        const canvas = document.getElementById('mindmap-canvas');
+        const label = document.getElementById('mm-zoom-label');
+        if (!canvas || !label) return;
+        mindmapScale = Math.max(0.5, Math.min(2.0, scale));
+        canvas.style.transform = `scale(${mindmapScale})`;
+        label.textContent = `${Math.round(mindmapScale * 100)}%`;
+    }
+
+    document.getElementById('mm-zoom-in').addEventListener('click', () => setMindmapScale(mindmapScale + 0.1));
+    document.getElementById('mm-zoom-out').addEventListener('click', () => setMindmapScale(mindmapScale - 0.1));
+    document.getElementById('mm-reset').addEventListener('click', () => setMindmapScale(1));
+
+    function buildMindmapHtml(cases, rootTitle) {
+        const safeRoot = escapeHtml(rootTitle || '用例脑图');
+        let html = `<div class="mindmap"><ul><li><span class="mindmap-node root">${safeRoot}</span>`;
+        if (cases && cases.length) {
+            html += `<ul>`;
+            cases.forEach((c) => {
+                const title = (c.title || '').trim();
+                if (!title) return;
+                html += `<li><span class="mindmap-node case" data-title="${escapeHtml(title)}">${escapeHtml(title)}</span>`;
+                const children = [];
+                const pr = (c.priority || '').trim();
+                const pc = (c.pre_condition || '').trim();
+                if (pr) children.push({ t: `优先级：${pr}` });
+                if (pc) children.push({ t: `前置条件：${pc}` });
+                if (c.steps_list && c.steps_list.length) {
+                    children.push({ t: `步骤（${c.steps_list.length}）` });
+                    c.steps_list.slice(0, 8).forEach((s, idx) => {
+                        const d = (s.description || '').trim();
+                        const r = (s.expected_result || '').trim();
+                        const line = `${idx + 1}. ${d}${r ? ` → ${r}` : ''}`;
+                        if (line.trim() !== `${idx + 1}.`) children.push({ t: line });
+                    });
+                    if (c.steps_list.length > 8) children.push({ t: `… 还有 ${c.steps_list.length - 8} 步` });
+                }
+                if (children.length) {
+                    html += `<ul>`;
+                    children.forEach(ch => {
+                        html += `<li><span class="mindmap-node leaf">${escapeHtml(ch.t)}</span></li>`;
+                    });
+                    html += `</ul>`;
+                }
+                html += `</li>`;
+            });
+            html += `</ul>`;
+        }
+        html += `</li></ul></div>`;
+        return html;
+    }
+
+    function renderMindmap(cases) {
+        const projectOpt = document.querySelector('#project option:checked');
+        const reqOpt = document.querySelector('#requirement option:checked');
+        const projectName = ((projectOpt && projectOpt.textContent) ? projectOpt.textContent : '').trim();
+        const reqName = ((reqOpt && reqOpt.textContent) ? reqOpt.textContent : '').trim();
+        const root = reqName ? `${projectName} / ${reqName}` : (projectName || '用例脑图');
+        const canvas = document.getElementById('mindmap-canvas');
+        if (!canvas) return;
+        canvas.innerHTML = buildMindmapHtml(cases || [], root);
+        setMindmapScale(1);
+    }
+
+    document.getElementById('result-mindmap').addEventListener('click', function(e) {
+        const t = e.target;
+        if (!(t instanceof HTMLElement)) return;
+        if (!t.classList.contains('mindmap-node')) return;
+        const title = (t.getAttribute('data-title') || '').trim();
+        if (!title) return;
+        document.querySelectorAll('.case-list-item.active').forEach(el => el.classList.remove('active'));
+        const buttons = Array.from(document.querySelectorAll('#case-list .case-list-item'));
+        const hit = buttons.find(b => (b.textContent || '').trim() === title);
+        if (hit) hit.classList.add('active');
+        showTab('preview');
+        jumpToCaseTitle(title);
+    });
+
+    let currentJobId = null;
+    let currentOffset = 0;
+    let pollTimer = null;
+    let fullText = '';
+    let renderTimer = null;
+
+    function setBusy(busy) {
+        const loading = document.getElementById('loading');
+        const generateBtn = document.getElementById('generate-btn');
+        const stopBtn = document.getElementById('stop-btn');
+        if (busy) {
+            if (loading) loading.classList.remove('d-none');
+            if (generateBtn) {
+                generateBtn.disabled = true;
+                generateBtn.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> 生成中...';
+            }
+            if (stopBtn) stopBtn.disabled = false;
+        } else {
+            if (loading) loading.classList.add('d-none');
+            if (generateBtn) {
+                generateBtn.disabled = false;
+                generateBtn.innerHTML = '<i class="bi bi-stars"></i> 开始生成';
+            }
+            if (stopBtn) stopBtn.disabled = true;
+        }
+        updateClearButton();
+    }
+
+    function setResultButtonsEnabled(enabled) {
+        const copyBtn = document.getElementById('copy-btn');
+        const importBtn = document.getElementById('import-btn');
+        const exportExcelBtn = document.getElementById('export-excel-btn');
+        const exportXmindBtn = document.getElementById('export-xmind-btn');
+        if (copyBtn) copyBtn.disabled = !enabled;
+        if (importBtn) importBtn.disabled = !enabled;
+        if (exportExcelBtn) exportExcelBtn.disabled = !enabled;
+        if (exportXmindBtn) exportXmindBtn.disabled = !enabled;
+        updateClearButton();
+    }
+
+    function updateClearButton() {
+        const clearBtn = document.getElementById('clear-btn');
+        if (!clearBtn) return;
+        const stopBtn = document.getElementById('stop-btn');
+        const busy = stopBtn ? (stopBtn.disabled === false) : false;
+        const hasContent = !!String(fullText || '').trim();
+        clearBtn.disabled = busy || !(hasContent || !!currentJobId);
+    }
+
+    const AI_BASE = "{% url 'ai_index' %}";
+
+    function scheduleRender() {
+        const previewPane = document.getElementById('result-preview');
+        const rawPane = document.getElementById('result-raw');
+        if (renderTimer) return;
+        renderTimer = setTimeout(function() {
+            renderTimer = null;
+            window.rawMarkdownText = fullText;
+            if (rawPane) rawPane.innerHTML = escapeHtml(fullText);
+            if (previewPane && !previewPane.classList.contains('d-none')) {
+                previewPane.innerHTML = marked.parse(fullText);
+                previewPane.scrollTop = previewPane.scrollHeight;
+            }
+        }, 800);
+    }
+
+    async function startJob(formData) {
+        const resp = await fetch('{% url "ai_job_start" %}', {
+            method: 'POST',
+            body: formData,
+            headers: { 'X-CSRFToken': '{{ csrf_token }}' }
+        });
+        const data = await resp.json();
+        if (!data || !data.success) throw new Error((data && data.error) ? data.error : '启动失败');
+        return data.job_id;
+    }
+
+    async function pollOnce() {
+        if (!currentJobId) return;
+        try {
+            const loading = document.getElementById('loading');
+            const loadingMsg = loading ? loading.querySelector('p') : null;
+            const resp = await fetch(`${AI_BASE}jobs/${encodeURIComponent(currentJobId)}/poll/?offset=${currentOffset}`, { credentials: 'same-origin' });
+            const data = await resp.json();
+            if (!data || !data.success) return;
+            const msg = (data.progress_message || '').trim();
+            if (msg && loadingMsg) loadingMsg.textContent = msg;
+            const delta = data.delta || '';
+            if (delta) {
+                fullText += delta;
+                currentOffset = Number(data.next_offset || fullText.length);
+                scheduleRender();
+            }
+            const st = String(data.status || '');
+            if (st === 'done' || st === 'stopped' || st === 'error') {
+                stopPolling();
+                await loadFinal();
+            }
+        } catch (e) {}
+    }
+
+    function startPolling() {
+        stopPolling();
+        pollTimer = setInterval(pollOnce, 1000);
+        pollOnce();
+    }
+
+    function stopPolling() {
+        if (pollTimer) clearInterval(pollTimer);
+        pollTimer = null;
+    }
+
+    async function loadFinal() {
+        if (!currentJobId) return;
+        const previewPane = document.getElementById('result-preview');
+        const loading = document.getElementById('loading');
+        const loadingMsg = loading ? loading.querySelector('p') : null;
+        try {
+            const resp = await fetch(`${AI_BASE}jobs/${encodeURIComponent(currentJobId)}/status/`, { credentials: 'same-origin' });
+            const data = await resp.json();
+            if (!data || !data.success) return;
+            const job = data.job || {};
+            const st = String(job.status || '');
+            const text = (data.markdown_text != null) ? String(data.markdown_text) : fullText;
+            fullText = text;
+            currentOffset = fullText.length;
+            window.rawMarkdownText = fullText;
+            const cases = data.cases || [];
+            renderCaseList(cases);
+            renderMindmap(cases);
+            filterCaseList(document.getElementById('case-search').value);
+            setResultButtonsEnabled(!!String(fullText || '').trim() && (st === 'done' || st === 'stopped'));
+            setBusy(false);
+            if (st === 'error') {
+                if (previewPane) previewPane.innerHTML = `<div class="alert alert-danger">生成失败: ${(job.error_message || '')}</div>`;
+            } else if (st === 'stopped') {
+                if (loadingMsg) loadingMsg.textContent = '已停止（可导入/导出/复制已生成内容）';
+            }
+        } catch (e) {
+            setBusy(false);
+            if (previewPane) previewPane.innerHTML = `<div class="alert alert-danger">发生错误: ${e.message || e}</div>`;
+        }
+    }
+
+    document.getElementById('ai-form').addEventListener('submit', async function(e) {
+        e.preventDefault();
+
+        const formData = new FormData(this);
+        const previewPane = document.getElementById('result-preview');
+        const rawPane = document.getElementById('result-raw');
+        const mindmapPane = document.getElementById('result-mindmap');
+        const projectSel = document.getElementById('project');
+        const reqSel = document.getElementById('requirement');
+        const reqText = document.getElementById('requirements_text');
+        const ctxText = document.getElementById('context');
+        const fileInput = document.getElementById('file');
+
+        document.getElementById('case-list').innerHTML = '<div class="text-muted small">生成中…</div>';
+        previewPane.innerHTML = '';
+        rawPane.textContent = '';
+        if (mindmapPane) {
+            mindmapPane.classList.add('d-none');
+            document.getElementById('mindmap-canvas').innerHTML = '<div class="text-muted text-center py-5">生成后将显示用例脑图</div>';
+        }
+        showTab('preview');
+        setResultButtonsEnabled(false);
+        setBusy(true);
+        fullText = '';
+        currentOffset = 0;
+        renderTimer = null;
+
+        try {
+            const meta = {
+                project_id: projectSel ? String(projectSel.value || '') : '',
+                requirement_id: reqSel ? String(reqSel.value || '') : '',
+                requirements: reqText ? String(reqText.value || '') : '',
+                context: ctxText ? String(ctxText.value || '') : '',
+                file_name: (fileInput && fileInput.files && fileInput.files[0] && fileInput.files[0].name) ? String(fileInput.files[0].name) : ''
+            };
+            try { localStorage.setItem('ai_last_job_form', JSON.stringify(meta)); } catch (e) {}
+            const jid = await startJob(formData);
+            currentJobId = jid;
+            try { localStorage.setItem('ai_last_job_id', String(jid)); } catch (e) {}
+            startPolling();
+        } catch (error) {
+            previewPane.innerHTML = `<div class="alert alert-danger">发生错误: ${error.message}</div>`;
+            setBusy(false);
+        }
+    });
+
+    async function stopGeneration() {
+        const stopBtn = document.getElementById('stop-btn');
+        stopBtn.disabled = true;
+        if (!currentJobId) return;
+        try {
+            await fetch(`${AI_BASE}jobs/${encodeURIComponent(currentJobId)}/stop/`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({})
+            });
+        } catch (e) {}
+    }
+
+    async function clearGenerated() {
+        const confirmed = confirm('确认清空当前页面已生成的内容吗？');
+        if (!confirmed) return;
+        const stopBtn = document.getElementById('stop-btn');
+        if (stopBtn && stopBtn.disabled === false) return;
+        stopPolling();
+        const jid = currentJobId;
+        currentJobId = null;
+        currentOffset = 0;
+        fullText = '';
+        window.rawMarkdownText = '';
+        try { localStorage.removeItem('ai_last_job_id'); } catch (e) {}
+        try { localStorage.removeItem('ai_last_job_form'); } catch (e) {}
+        const previewPane = document.getElementById('result-preview');
+        const rawPane = document.getElementById('result-raw');
+        const mindmapCanvas = document.getElementById('mindmap-canvas');
+        const caseList = document.getElementById('case-list');
+        const fileSelected = document.getElementById('file-selected');
+        if (previewPane) previewPane.innerHTML = '';
+        if (rawPane) rawPane.textContent = '';
+        if (mindmapCanvas) mindmapCanvas.innerHTML = '<div class="text-muted text-center py-5">生成后将显示用例脑图</div>';
+        if (caseList) caseList.innerHTML = '<div class="text-muted small">生成后将显示用例列表</div>';
+        if (fileSelected) fileSelected.textContent = '未选择文件';
+        setResultButtonsEnabled(false);
+        setBusy(false);
+        if (jid) {
+            try {
+                await fetch(`${AI_BASE}jobs/${encodeURIComponent(jid)}/clear/`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                    body: JSON.stringify({})
+                });
+            } catch (e) {}
+        }
+    }
+
+    document.getElementById('stop-btn').addEventListener('click', stopGeneration);
+
+    function copyToClipboard() {
+        const text = window.rawMarkdownText || document.getElementById('result-preview').innerText;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+            navigator.clipboard.writeText(text).then(() => {
+                alert('已复制到剪贴板');
+            }).catch(() => {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                ta.remove();
+                alert('已复制到剪贴板');
+            });
+            return;
+        }
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        ta.remove();
+        alert('已复制到剪贴板');
+    }
+
+    async function importTestCases() {
+        if (!currentJobId) return;
+        const confirmed = confirm('确认导入已生成的用例到用例库吗？');
+        if (!confirmed) return;
+        try {
+            const response = await fetch(`${AI_BASE}jobs/${encodeURIComponent(currentJobId)}/import/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': '{{ csrf_token }}' },
+                body: JSON.stringify({})
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(`成功导入 ${data.count} 条用例！`);
+                window.location.href = '/testcases/';
+            } else {
+                alert('导入失败: ' + data.error);
+            }
+        } catch (e) {
+            alert('导入出错: ' + e.message);
+        }
+    }
+
+    async function exportTestCases(fmt) {
+        if (!currentJobId) return;
+        const url = (fmt === 'xmind')
+            ? `${AI_BASE}jobs/${encodeURIComponent(currentJobId)}/export/xmind/`
+            : `${AI_BASE}jobs/${encodeURIComponent(currentJobId)}/export/excel/`;
+        try {
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': '{{ csrf_token }}'
+                },
+                body: JSON.stringify({})
+            });
+            if (!response.ok) {
+                let msg = '导出失败';
+                try {
+                    const data = await response.json();
+                    msg = data.error || msg;
+                } catch (e) {}
+                alert(msg);
+                return;
+            }
+            const blob = await response.blob();
+            const a = document.createElement('a');
+            const ext = (fmt === 'xmind') ? 'xmind' : 'xlsx';
+            a.href = window.URL.createObjectURL(blob);
+            a.download = `test_cases.${ext}`;
+            document.body.appendChild(a);
+            a.click();
+            a.remove();
+        } catch (e) {
+            alert('导出出错: ' + e.message);
+        }
+    }
+
+    function restoreLeftForm(job, meta) {
+        const projectSel = document.getElementById('project');
+        const reqSel = document.getElementById('requirement');
+        const reqText = document.getElementById('requirements_text');
+        const ctxText = document.getElementById('context');
+        const fileSelected = document.getElementById('file-selected');
+
+        const projectId = (job && job.project_id) ? String(job.project_id) : (meta && meta.project_id ? String(meta.project_id) : '');
+        const requirementId = (job && job.requirement_id) ? String(job.requirement_id) : (meta && meta.requirement_id ? String(meta.requirement_id) : '');
+        if (projectSel && projectId) {
+            projectSel.value = projectId;
+            try { projectSel.dispatchEvent(new Event('change')); } catch (e) {}
+        }
+        if (reqSel && requirementId) {
+            reqSel.value = requirementId;
+        }
+        if (reqText && meta && meta.requirements != null && String(reqText.value || '').trim() === '') {
+            reqText.value = String(meta.requirements || '');
+        }
+        if (ctxText && meta && meta.context != null && String(ctxText.value || '').trim() === '') {
+            ctxText.value = String(meta.context || '');
+        }
+        const sourceName = (job && job.source_name) ? String(job.source_name) : (meta && meta.file_name ? String(meta.file_name) : '');
+        if (fileSelected && sourceName) {
+            fileSelected.textContent = `上次任务文件：${sourceName}`;
+        }
+    }
+
+    (async function restoreJob() {
+        let jid = null;
+        try { jid = localStorage.getItem('ai_last_job_id'); } catch (e) { jid = null; }
+        if (!jid) return;
+        const n = parseInt(jid, 10);
+        if (!n) return;
+        currentJobId = n;
+        let meta = null;
+        try {
+            const raw = localStorage.getItem('ai_last_job_form');
+            meta = raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            meta = null;
+        }
+        try {
+            const resp = await fetch(`${AI_BASE}jobs/${encodeURIComponent(currentJobId)}/status/`, { credentials: 'same-origin' });
+            const data = await resp.json();
+            if (!data || !data.success) return;
+            const job = data.job || {};
+            const st = String(job.status || '');
+            restoreLeftForm(job, meta);
+            if (st === 'running') {
+                setBusy(true);
+                startPolling();
+            } else if (st === 'done' || st === 'stopped') {
+                fullText = String(data.markdown_text || '');
+                currentOffset = fullText.length;
+                window.rawMarkdownText = fullText;
+                scheduleRender();
+                renderCaseList(data.cases || []);
+                renderMindmap(data.cases || []);
+                setResultButtonsEnabled(!!String(fullText || '').trim());
+                setBusy(false);
+            }
+        } catch (e) {}
+    })();
+
+    function parseTestCases(text) {
+        const cases = [];
+        const lines = text.split('\n');
+        
+        let currentCase = null;
+        let inTable = false;
+
+        // Helper to save current case
+        const saveCurrentCase = () => {
+            if (currentCase) {
+                // Only save if we have at least a title
+                if (currentCase.title) {
+                    cases.push(currentCase);
+                }
+            }
+        };
+
+        for (let i = 0; i < lines.length; i++) {
+            const line = lines[i].trim();
+            
+            // 1. Detect Case Title (Starts with #... TC- or just TC-)
+            const titleMatch = line.match(/^#{0,6}\s*\*?TC-([\w-]+)[:：]?\s*(.*?)\*?$/i);
+            
+            if (titleMatch) {
+                saveCurrentCase();
+                currentCase = {
+                    title: `TC-${titleMatch[1]}: ${titleMatch[2]}`,
+                    pre_condition: '',
+                    priority: '',
+                    steps_list: [] // Store structured steps
+                };
+                inTable = false;
+                continue;
+            }
+
+            if (!currentCase) continue;
+
+            // 2. Extract Fields (Precondition)
+            if (line.match(/(\*\*|)?前置条件[:：]?(\*\*|)?/)) {
+                currentCase.pre_condition = line.replace(/(\*\*|)?前置条件[:：]?(\*\*|)?/g, '').trim();
+                continue;
+            }
+
+            if (line.match(/(\*\*|)?优先级[:：]?(\*\*|)?/)) {
+                currentCase.priority = line.replace(/(\*\*|)?优先级[:：]?(\*\*|)?/g, '').trim();
+                continue;
+            }
+
+            // 3. Detect Table Start (Look for Separator Line)
+            // Standard Markdown table separator: |---|---| or | :--- | :--- |
+            // Must have at least one pipe and dashes/colons
+            if (line.match(/^\s*\|?[\s-:]+\|[\s-:]+/)) {
+                inTable = true;
+                continue;
+            }
+
+            // 4. Parse Table Content
+            if (inTable) {
+                // Stop if line doesn't look like a table row
+                if (!line.includes('|')) {
+                    if (line !== '') inTable = false;
+                    continue;
+                }
+
+                // Check if this line is actually a header (sometimes AI repeats header)
+                if ((line.includes('步骤') || line.includes('Step')) && (line.includes('预期') || line.includes('Result'))) {
+                    continue;
+                }
+
+                const cols = line.split('|').map(c => c.trim());
+                // Filter out empty start/end columns if they exist (due to leading/trailing pipe)
+                // e.g. "| 1 | Step | Result |" -> ["", "1", "Step", "Result", ""]
+                const cleanCols = cols.filter((c, idx) => {
+                    // Keep if not empty, OR if it's a middle column that happens to be empty
+                    // Simple approach: remove empty first/last
+                    if (idx === 0 && c === '') return false;
+                    if (idx === cols.length - 1 && c === '') return false;
+                    return true;
+                });
+
+                if (cleanCols.length >= 2) {
+                    let step = '';
+                    let result = '';
+
+                    // Try to guess columns based on count
+                    // 3 cols: ID | Step | Result
+                    // 2 cols: Step | Result
+                    if (cleanCols.length >= 3) {
+                         step = cleanCols[1];
+                         result = cleanCols[2];
+                    } else {
+                        step = cleanCols[0];
+                        result = cleanCols[1];
+                    }
+
+                    currentCase.steps_list.push({
+                        description: step,
+                        expected_result: result
+                    });
+                }
+            }
+        }
+
+        saveCurrentCase();
+        return cases;
+    }
+</script>
+{% endblock %}

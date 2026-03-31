@@ -1,0 +1,563 @@
+{% extends 'base.html' %}
+
+{% block content %}
+<div class="page-head">
+    <div>
+        <h1 class="page-title">用例管理</h1>
+        <div class="page-subtitle">用例库 · AI 扩写 · AI 自动执行</div>
+    </div>
+    <div class="d-flex gap-2">
+        <a href="{% url 'case_create' %}" class="btn btn-primary"><i class="bi bi-plus-lg me-1"></i>创建用例</a>
+        {% if not FEATURE_HIDE_BATCH_EXEC %}
+        <button type="button" class="btn btn-outline-primary" onclick="batchRunAI()"><i class="bi bi-lightning-charge me-1"></i>批量 AI 执行</button>
+        {% endif %}
+    </div>
+</div>
+
+<div class="row g-3 mb-4 stat-grid">
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">总用例数</div>
+                    <div class="stat-value">{{ total }}</div>
+                </div>
+                <span class="badge bg-primary"><i class="bi bi-collection me-1"></i>Total</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">我创建的</div>
+                    <div class="stat-value">{{ my_cases }}</div>
+                </div>
+                <span class="badge bg-success"><i class="bi bi-person-check me-1"></i>Mine</span>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="card">
+            <div class="card-body">
+                <div>
+                    <div class="stat-label">未执行</div>
+                    <div class="stat-value">{{ not_executed }}</div>
+                </div>
+                <span class="badge bg-warning text-dark"><i class="bi bi-hourglass-split me-1"></i>Pending</span>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card mb-4">
+    <div class="card-body">
+        <form method="get" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <label class="form-label small text-muted mb-1">关键词</label>
+                <input type="text" name="keyword" class="form-control" placeholder="搜索用例标题或 ID" value="{{ request.GET.keyword }}">
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">项目</label>
+                <select name="project" class="form-select" onchange="this.form.submit()">
+                    <option value="">所有项目</option>
+                    {% for p in projects %}
+                    <option value="{{ p.id }}" {% if request.GET.project == p.id|stringformat:"s" %}selected{% endif %}>{{ p.name }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">需求</label>
+                <select name="requirement" class="form-select">
+                    <option value="">所有需求</option>
+                    {% for r in requirements %}
+                    <option value="{{ r.id }}" {% if request.GET.requirement == r.id|stringformat:"s" %}selected{% endif %}>{{ r.title }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-2">
+                <label class="form-label small text-muted mb-1">开始时间</label>
+                <input type="date" name="date_start" class="form-control" value="{{ request.GET.date_start }}">
+            </div>
+            <div class="col-md-2 d-flex gap-2">
+                <button type="submit" class="btn btn-primary flex-grow-1"><i class="bi bi-search"></i></button>
+                <a href="/testcases/" class="btn btn-outline-secondary" title="重置"><i class="bi bi-arrow-counterclockwise"></i></a>
+            </div>
+        </form>
+    </div>
+</div>
+
+<form id="batch-delete-form" action="{% url 'case_batch_delete' %}" method="post">
+    {% csrf_token %}
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div class="d-flex gap-2">
+            <div class="form-check align-self-center me-2">
+                <input class="form-check-input" type="checkbox" id="select-all">
+                <label class="form-check-label text-muted" for="select-all">全选本页</label>
+            </div>
+            <button type="submit" class="btn btn-outline-danger btn-sm" onclick="return confirm('确定要删除选中的用例吗？');">
+                <i class="bi bi-trash me-1"></i> 批量删除
+            </button>
+            {% if not FEATURE_HIDE_BATCH_EXEC %}
+            <button type="button" class="btn btn-outline-primary btn-sm" onclick="batchRunAI()">
+                <i class="bi bi-play-fill me-1"></i> 批量执行
+            </button>
+            {% endif %}
+        </div>
+        <div class="text-muted small">勾选多条后可批量操作</div>
+    </div>
+    
+    <div class="card">
+        <div class="table-responsive">
+            <table class="table table-hover table-striped align-middle mb-0">
+                <thead>
+                    <tr>
+                        <th style="width: 42px;" class="text-center">#</th>
+                        <th>ID</th>
+                        <th>标题</th>
+                        <th>项目</th>
+                        <th>类型</th>
+                        <th>优先级</th>
+                        <th>状态</th>
+                        <th>创建人</th>
+                        <th>创建时间</th>
+                        <th class="text-end pe-4">操作</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for case in cases %}
+                    <tr>
+                        <td class="text-center">
+                            <input class="form-check-input" type="checkbox" name="case_ids" value="{{ case.id }}">
+                        </td>
+                        <td class="text-muted small">#{{ case.id }}</td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <a class="fw-bold text-decoration-none text-dark" href="{% url 'case_detail' case.pk %}">{{ case.title }}</a>
+                                {% if case.execution_type == 2 %}
+                                    <span class="badge bg-primary bg-opacity-10 text-primary border border-primary-subtle" style="font-size: 10px;">AI</span>
+                                {% endif %}
+                                {% if case.case_mode == "advanced" %}
+                                    <span class="badge bg-info bg-opacity-10 text-info border border-info-subtle" style="font-size: 10px;">高级</span>
+                                {% endif %}
+                            </div>
+                        </td>
+                        <td><span class="badge bg-light text-dark border">{{ case.project.name }}</span></td>
+                        <td>{{ case.get_type_display }}</td>
+                        <td>
+                            {% if case.priority == 1 %}
+                                <span class="badge bg-danger">P0</span>
+                            {% elif case.priority == 2 %}
+                                <span class="badge bg-warning text-dark">P1</span>
+                            {% elif case.priority == 3 %}
+                                <span class="badge bg-info text-dark">P2</span>
+                            {% else %}
+                                <span class="badge bg-secondary">P3</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge {% if case.status == 2 %}bg-success{% elif case.status == 3 %}bg-danger{% elif case.status == 5 %}bg-info text-dark{% else %}bg-secondary{% endif %}">
+                                {{ case.get_status_display }}
+                            </span>
+                        </td>
+                        <td class="text-muted small">{{ case.creator.username }}</td>
+                        <td class="text-muted small">{{ case.created_at|date:"Y-m-d" }}</td>
+                        <td class="text-end pe-4">
+                            <div class="btn-group">
+                                <button type="button" class="btn btn-sm btn-outline-primary" onclick="runAI({{ case.id }})" title="AI 执行" aria-label="AI 执行">
+                                    <i class="bi bi-play-fill"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="copyCase({{ case.id }})" title="复制用例" aria-label="复制用例">
+                                    <i class="bi bi-files"></i>
+                                </button>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" data-base-title="{{ case.title|escapejs }}" onclick="openExpandModal({{ case.id }}, this.dataset.baseTitle)" title="扩写" aria-label="扩写">
+                                    <i class="bi bi-magic"></i>
+                                </button>
+                                {% if case.has_ai_report %}
+                                <a href="/autotest/reports/?case_id={{ case.id }}" class="btn btn-sm btn-outline-secondary" title="查看报告" aria-label="查看报告">
+                                    <i class="bi bi-file-text"></i>
+                                </a>
+                                {% endif %}
+                                <a href="{% url 'delete_case' case.pk %}" class="btn btn-sm btn-outline-danger" onclick="return confirm('确定要删除此用例吗？');" title="删除" aria-label="删除">
+                                    <i class="bi bi-trash"></i>
+                                </a>
+                            </div>
+                        </td>
+                    </tr>
+                    {% empty %}
+                    <tr><td colspan="10" class="text-center text-muted py-5">暂无用例</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</form>
+
+{% include 'core/pagination.html' %}
+
+<div class="modal fade" id="expandModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-xl modal-dialog-scrollable">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="bi bi-magic me-2"></i>用例扩写</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-muted small mb-2" id="expandStatusText">准备生成...</div>
+                <textarea id="expandMarkdown" class="form-control" rows="18" placeholder="这里会显示 AI 生成内容；你可以在生成完成后人工修改。"></textarea>
+                <div class="text-muted small mt-2">提示：请保持 ## TC-xxx 标题与步骤表格格式，便于解析入库。</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">关闭</button>
+                <button type="button" class="btn btn-primary" id="expandSaveBtn" onclick="saveExpandedCases()" disabled>确认保存</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="modal fade" id="aiExecModeModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">AI 执行模式</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <div class="form-check">
+                    <input class="form-check-input" type="radio" name="aiExecMode" id="aiExecModeHeadful" value="headful">
+                    <label class="form-check-label" for="aiExecModeHeadful">有头模式（弹出浏览器窗口）</label>
+                </div>
+                <div class="form-check mt-1">
+                    <input class="form-check-input" type="radio" name="aiExecMode" id="aiExecModeHeadless" value="headless">
+                    <label class="form-check-label" for="aiExecModeHeadless">无头模式（后台运行）</label>
+                </div>
+                <div class="text-muted small mt-2">企业内网/SSO/证书/代理插件场景建议关闭无头（使用有头模式）以便完成一次登录与环境初始化。</div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">取消</button>
+                <button type="button" class="btn btn-primary" onclick="confirmExecModeModal()">开始执行</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    document.getElementById('select-all')?.addEventListener('change', function() {
+        var checkboxes = document.querySelectorAll('input[name="case_ids"]');
+        for (var checkbox of checkboxes) {
+            checkbox.checked = this.checked;
+        }
+    });
+
+    function getCookie(name) {
+        let cookieValue = null;
+        if (document.cookie && document.cookie !== '') {
+            const cookies = document.cookie.split(';');
+            for (let i = 0; i < cookies.length; i++) {
+                const cookie = cookies[i].trim();
+                if (cookie.substring(0, name.length + 1) === (name + '=')) {
+                    cookieValue = decodeURIComponent(cookie.substring(name.length + 1));
+                    break;
+                }
+            }
+        }
+        return cookieValue;
+    }
+
+    async function copyCase(caseId) {
+        if (!caseId) return;
+        try {
+            const resp = await fetch(`/testcases/${caseId}/copy/`, {
+                method: 'POST',
+                headers: { 'X-CSRFToken': getCookie('csrftoken') },
+                credentials: 'same-origin',
+            });
+            const data = await resp.json();
+            if (!data || !data.success) {
+                alert('复制失败：' + (data && data.error ? data.error : '未知错误'));
+                return;
+            }
+            if (data.redirect_url) {
+                window.location.href = data.redirect_url;
+            } else {
+                window.location.reload();
+            }
+        } catch (e) {
+            console.error(e);
+            alert('复制失败');
+        }
+    }
+
+    const csrftoken = getCookie('csrftoken');
+    const execModeModalEl = document.getElementById('aiExecModeModal');
+    const execModeModal = execModeModalEl ? new bootstrap.Modal(execModeModalEl) : null;
+    let execModeTarget = null;
+
+    function getExecHeadlessDefault() {
+        try {
+            const v = localStorage.getItem('ai_exec_headless');
+            if (v === '0') return false;
+            if (v === '1') return true;
+        } catch (e) {}
+        return true;
+    }
+
+    function openExecModeModal(target) {
+        execModeTarget = target;
+        const headless = getExecHeadlessDefault();
+        const rHeadless = document.getElementById('aiExecModeHeadless');
+        const rHeadful = document.getElementById('aiExecModeHeadful');
+        if (rHeadless && rHeadful) {
+            rHeadless.checked = !!headless;
+            rHeadful.checked = !headless;
+        }
+        if (execModeModal) execModeModal.show();
+    }
+
+    async function confirmExecModeModal() {
+        const sel = document.querySelector('input[name="aiExecMode"]:checked');
+        const headless = sel ? (String(sel.value) === 'headless') : true;
+        try { localStorage.setItem('ai_exec_headless', headless ? '1' : '0'); } catch (e) {}
+        if (execModeModal) execModeModal.hide();
+        const t = execModeTarget;
+        execModeTarget = null;
+        if (!t) return;
+        if (t.type === 'single') {
+            await runAIWithMode(t.caseId, headless);
+            return;
+        }
+        if (t.type === 'batch') {
+            await batchRunAIWithMode(t.caseIds, headless);
+            return;
+        }
+    }
+
+    async function runAIWithMode(caseId, headless) {
+        try {
+            const response = await fetch(`/autotest/run/${caseId}/`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'X-CSRFToken': csrftoken },
+                body: JSON.stringify({ headless: !!headless })
+            });
+            const data = await response.json();
+            if(data.success) {
+                if (data.execution_ids && data.execution_ids.length > 1) {
+                    alert(`已启动高级用例批量执行：${data.execution_ids.length} 轮。将打开第1轮控制台。`);
+                }
+                // Open console in new tab
+                window.open(`/autotest/console/${data.execution_id}/`, '_blank');
+            } else {
+                alert('启动失败: ' + data.error);
+            }
+        } catch(e) {
+            console.error(e);
+            alert('请求出错');
+        }
+    }
+
+    async function runAI(caseId) {
+        openExecModeModal({ type: 'single', caseId: caseId });
+    }
+
+    async function batchRunAIWithMode(caseIds, headless) {
+        try {
+            const response = await fetch('/autotest/batch-run/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({ case_ids: caseIds, headless: !!headless })
+            });
+            const data = await response.json();
+            if(data.success) {
+                alert(`已启动 ${data.execution_ids.length} 个任务。请前往报告列表查看进度。`);
+                window.location.href = '/autotest/reports/';
+            } else {
+                alert('启动失败: ' + data.error);
+            }
+        } catch(e) {
+            console.error(e);
+            alert('请求出错');
+        }
+    }
+
+    async function batchRunAI() {
+        const checkboxes = document.querySelectorAll('input[name="case_ids"]:checked');
+        if (checkboxes.length === 0) {
+            alert('请选择要执行的用例');
+            return;
+        }
+        
+        const caseIds = Array.from(checkboxes).map(cb => cb.value);
+        await batchRunAIWithMode(caseIds, true);
+    }
+
+    let expandCurrentCaseId = null;
+    let expandBaseCaseTitle = '';
+    let expandAbortController = null;
+
+    const expandModalEl = document.getElementById('expandModal');
+    const expandMarkdownEl = document.getElementById('expandMarkdown');
+    const expandStatusEl = document.getElementById('expandStatusText');
+    const expandSaveBtnEl = document.getElementById('expandSaveBtn');
+    const expandModal = new bootstrap.Modal(expandModalEl);
+
+    expandModalEl.addEventListener('hidden.bs.modal', () => {
+        if (expandAbortController) {
+            try { expandAbortController.abort(); } catch (e) {}
+            expandAbortController = null;
+        }
+        expandCurrentCaseId = null;
+        expandMarkdownEl.value = '';
+        expandSaveBtnEl.disabled = true;
+        expandStatusEl.innerText = '准备生成...';
+    });
+
+    function openExpandModal(caseId, baseTitle) {
+        expandCurrentCaseId = caseId;
+        expandBaseCaseTitle = baseTitle || '';
+        expandMarkdownEl.value = '';
+        expandSaveBtnEl.disabled = true;
+        expandStatusEl.innerText = `正在生成用例（基础用例 #${caseId}）...`;
+        expandModal.show();
+        startExpandGeneration();
+    }
+
+    function fixPlaceholderTitles(markdown, baseTitle) {
+        const lines = (markdown || '').split('\n');
+        let idx = 0;
+        const base = (baseTitle || '扩写用例').trim();
+        const isPlaceholder = (s) => {
+            const t = (s || '').replace(/\s+/g, '');
+            return (!t) || (t === '测试标题') || (t === '用例标题') || (t === '标题') || (t === '测试用例');
+        };
+        for (let i = 0; i < lines.length; i++) {
+            const raw = lines[i];
+            const m = raw.match(/^(\s*#{1,6}\s*)(TC[-_ ]?\d+)(\s*[:：]\s*)(.*?)(\s*)$/i);
+            if (!m) continue;
+            const prefix = m[1] || '';
+            const code = m[2] || '';
+            const sep = m[3] || ': ';
+            const name = (m[4] || '').trim();
+            const suffix = m[5] || '';
+            idx += 1;
+            let newName = '';
+            for (let j = i + 1; j < Math.min(i + 15, lines.length); j++) {
+                const descLine = (lines[j] || '').trim();
+                if (!descLine) continue;
+                let mm = descLine.match(/^(?:[-*]\s*)?\*\*\s*描述\s*[:：]\s*\*\*\s*(.*)$/);
+                if (!mm) mm = descLine.match(/^(?:[-*]\s*)?(?:\*\*)?\s*描述\s*(?:\*\*)?\s*[:：]\s*(.*)$/);
+                if (mm && (mm[1] || '').trim()) {
+                    newName = (mm[1] || '').trim();
+                    newName = newName.replace(/^[\s*+\-]+/, '').trim();
+                    break;
+                }
+                if (descLine.startsWith('#')) break;
+            }
+            if (!newName) {
+                if (!isPlaceholder(name)) continue;
+                newName = `${base} - 扩写场景${idx}`;
+            }
+            lines[i] = `${prefix}${code}${sep}${newName}${suffix}`;
+        }
+        return lines.join('\n');
+    }
+
+    async function startExpandGeneration() {
+        if (!expandCurrentCaseId) return;
+        expandAbortController = new AbortController();
+        const body = JSON.stringify({ case_id: expandCurrentCaseId });
+
+        try {
+            const response = await fetch('/testcases/expand/generate/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body,
+                signal: expandAbortController.signal
+            });
+
+            if (!response.ok || !response.body) {
+                let text = '';
+                try {
+                    const ct = (response.headers.get('content-type') || '').toLowerCase();
+                    if (ct.includes('application/json')) {
+                        const j = await response.json();
+                        text = (j && (j.error || j.message)) ? String(j.error || j.message) : '';
+                    }
+                } catch (e) {}
+                if (!text) {
+                    try { text = await response.text(); } catch (e) {}
+                }
+                expandStatusEl.innerText = '生成失败';
+                alert('扩写失败: ' + (text || response.status));
+                return;
+            }
+
+            const reader = response.body.getReader();
+            const decoder = new TextDecoder('utf-8');
+            while (true) {
+                const { value, done } = await reader.read();
+                if (done) break;
+                const chunk = decoder.decode(value, { stream: true });
+                expandMarkdownEl.value += chunk;
+                expandMarkdownEl.scrollTop = expandMarkdownEl.scrollHeight;
+            }
+
+            if ((expandMarkdownEl.value || '').includes('[ERROR]')) {
+                expandStatusEl.innerText = '生成失败';
+                expandSaveBtnEl.disabled = true;
+                alert('扩写失败：请检查 API Key/模型配置或后端日志');
+                return;
+            }
+            expandMarkdownEl.value = fixPlaceholderTitles(expandMarkdownEl.value, expandBaseCaseTitle);
+            expandStatusEl.innerText = '生成完成：你可以编辑后点击“确认保存”';
+            expandSaveBtnEl.disabled = false;
+        } catch (e) {
+            if (e && e.name === 'AbortError') return;
+            console.error(e);
+            expandStatusEl.innerText = '生成失败';
+            alert('请求出错');
+        }
+    }
+
+    async function saveExpandedCases() {
+        if (!expandCurrentCaseId) return;
+        const markdown = expandMarkdownEl.value || '';
+        if (!markdown.trim()) {
+            alert('扩写内容为空');
+            return;
+        }
+        expandSaveBtnEl.disabled = true;
+        expandStatusEl.innerText = '正在保存...';
+
+        try {
+            const response = await fetch('/testcases/expand/import/', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-CSRFToken': csrftoken
+                },
+                body: JSON.stringify({ case_id: expandCurrentCaseId, markdown })
+            });
+            const data = await response.json();
+            if (data.success) {
+                alert(`保存成功：新增 ${data.created_count} 条用例`);
+                window.location.reload();
+            } else {
+                expandSaveBtnEl.disabled = false;
+                expandStatusEl.innerText = '保存失败：请检查格式后重试';
+                alert('保存失败: ' + (data.error || '未知错误'));
+            }
+        } catch (e) {
+            console.error(e);
+            expandSaveBtnEl.disabled = false;
+            expandStatusEl.innerText = '保存失败';
+            alert('请求出错');
+        }
+    }
+</script>
+{% endblock %}
